@@ -243,7 +243,6 @@ td{padding:6px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 <body>
 <div class="header">
   <div class="brand">
-    <div class="logo">DK</div>
     <div><h2>FinanceBub</h2><div style="color:#64748b;font-size:10px">Rekonsiliasi Pajak Pemasukan</div></div>
   </div>
   <div>

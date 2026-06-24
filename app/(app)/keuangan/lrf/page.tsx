@@ -152,7 +152,6 @@ export default function LRFPage() {
 <body>
   <div class="header">
     <div class="brand">
-      <div class="logo">DK</div>
       <div><h2>FinanceBub</h2><div style="color:#64748b;font-size:11px;margin-top:2px">L/R Final — Detail Kategori</div></div>
     </div>
     <div>

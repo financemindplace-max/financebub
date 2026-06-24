@@ -316,9 +316,7 @@ async function downloadSlipPdf(s: SlipGaji) {
   <main class="sheet">
     <section class="topbar">
       <div class="company">
-        <div class="logo-box">
-          ${logoData ? `<img src="${logoData}" alt="Logo" />` : `<div class="logo-fallback">DK</div>`}
-        </div>
+        ${logoData ? `<div class="logo-box"><img src="${logoData}" alt="Logo" /></div>` : ''}
         <div>
           <div class="company-name">${esc(compName)}</div>
           <div class="company-meta">${esc(compAddr)}</div>

@@ -7,6 +7,7 @@ import Sidebar from '@/components/sidebar'
 import { Loader2 } from 'lucide-react'
 import { ref, onValue, off } from 'firebase/database'
 import { db } from '@/lib/firebase'
+import { normalizeAppInitials } from '@/lib/app-identity'
 
 const USER_ID = 'financebub-main'
 const CACHE_KEY = 'financebub_app_identity'
@@ -25,7 +26,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const cached = getCachedIdentity()
   const [appIdentity, setAppIdentity] = useState({
-    appInitials: cached?.appInitials || 'DK',
+    appInitials: normalizeAppInitials(cached?.appInitials),
     appLogoData: cached?.appLogoData || '',
     appColor: cached?.appColor || '#1B8A7A',
   })
@@ -35,7 +36,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const handler = (snap: any) => {
       const g = snap.val() || {}
       const identity = {
-        appInitials: g.appInitials || 'DK',
+        appInitials: normalizeAppInitials(g.appInitials),
         appLogoData: g.appLogoData || '',
         appColor: g.appColor || '#1B8A7A',
       }
@@ -54,14 +55,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f5f5f4]">
         <div className="flex flex-col items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm overflow-hidden"
-            style={{ background: appIdentity.appLogoData ? 'transparent' : appIdentity.appColor }}
-          >
-            {appIdentity.appLogoData
-              ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover rounded-xl" />
-              : appIdentity.appInitials || 'DK'}
-          </div>
+          {(appIdentity.appLogoData || appIdentity.appInitials) && (
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm overflow-hidden"
+              style={{ background: appIdentity.appLogoData ? 'transparent' : appIdentity.appColor }}
+            >
+              {appIdentity.appLogoData
+                ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover rounded-xl" />
+                : appIdentity.appInitials}
+            </div>
+          )}
           <Loader2 className="w-5 h-5 animate-spin" style={{ color: appIdentity.appColor }} />
         </div>
       </div>

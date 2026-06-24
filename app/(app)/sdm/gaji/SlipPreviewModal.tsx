@@ -130,7 +130,6 @@ export default function SlipPreviewModal({ slip: s, onClose }: Props) {
             {/* Header teal */}
             <div style={{ background: col, padding: '13px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '11px' }}>
-                <div style={{ width: '38px', height: '38px', background: 'rgba(255,255,255,0.18)', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: '11px', letterSpacing: '1px', flexShrink: 0 }}>DK</div>
                 <div>
                   <div style={{ color: '#fff', fontWeight: 800, fontSize: '13px' }}>PT FinanceBub</div>
                   <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: '8px', marginTop: '2px' }}>Jl. Tebet Raya No.25B, Jakarta Selatan · admin@financebub.com · 0815-5555-566</div>

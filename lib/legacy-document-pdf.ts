@@ -238,7 +238,7 @@ export function buildLegacyPreviewHtml(data: LegacyDocumentData): string {
   const title = data.isQuotation ? 'QUOTATION' : 'INVOICE'
   const logo = data.logoData
     ? `<img src="${data.logoData}" style="max-height:42px;max-width:90px;object-fit:contain;display:block">`
-    : `<div style="width:40px;height:40px;background:${col};border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">DK</div>`
+    : ''
   const signature = data.signatureData
     ? `<img src="${data.signatureData}" style="width:160px;max-height:70px;display:block;margin:0 auto;object-fit:contain;object-position:center bottom">`
     : '<div style="height:38px"></div>'
@@ -404,13 +404,7 @@ export async function downloadLegacyDocumentPdf(data: LegacyDocumentData): Promi
       textX = ml
     }
   } else {
-    fc(color.r, color.g, color.b)
-    doc.roundedRect(ml, logoY, logoMaxW, logoMaxH, 2, 2, 'F')
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    tc(255, 255, 255)
-    doc.text('DK', ml + logoMaxW / 2, logoY + logoMaxH / 2 + 1.5, { align: 'center' })
-    textX = ml + logoMaxW + 3
+    textX = ml
   }
 
   doc.setFont('helvetica', 'bold')

@@ -522,7 +522,6 @@ export default function MutasiPage() {
   <div class="page">
     <div class="header">
       <div class="brand">
-        <div class="logo">DK</div>
         <div>
           <h2>FinanceBub</h2>
           <div class="subtitle">Laporan mutasi kas/bank per rekening</div>

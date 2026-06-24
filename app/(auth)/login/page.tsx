@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { Eye, EyeOff, Loader2, Mail } from 'lucide-react'
 import { fetchGlobal } from '@/lib/rtdb'
+import { normalizeAppInitials } from '@/lib/app-identity'
 
 function getFirebaseAuthMessage(error: unknown, mode: 'login' | 'register'): string {
   const code = typeof error === 'object' && error && 'code' in error
@@ -72,10 +73,10 @@ export default function LoginPage() {
   const [appIdentity, setAppIdentity] = useState({
     appName: 'FinanceBub',
     appSubtitle: 'Finance & Report',
-    appInitials: 'DK',
+    appInitials: '',
     appLogoData: '',
     appColor: '#1B8A7A',
-    appFooter: 'PT FinanceBub',
+    appFooter: 'FinanceBUB',
   })
 
   useEffect(() => {
@@ -84,10 +85,10 @@ export default function LoginPage() {
       setAppIdentity({
         appName: (g as any).appName || 'FinanceBub',
         appSubtitle: (g as any).appSubtitle || 'Finance & Report',
-        appInitials: (g as any).appInitials || 'DK',
+        appInitials: normalizeAppInitials((g as any).appInitials),
         appLogoData: (g as any).appLogoData || '',
         appColor: (g as any).appColor || '#1B8A7A',
-        appFooter: (g as any)['c-name'] || (g as any).appName || 'PT FinanceBub',
+        appFooter: String((g as any).appFooter ?? 'FinanceBUB').trim() || 'FinanceBUB',
       })
     })
   }, [])
@@ -250,12 +251,14 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#f5f5f4] p-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-            style={{ background: appIdentity.appLogoData ? 'transparent' : appIdentity.appColor }}>
-            {appIdentity.appLogoData
-              ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover" />
-              : appIdentity.appInitials || 'DK'}
-          </div>
+          {(appIdentity.appLogoData || appIdentity.appInitials) && (
+            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+              style={{ background: appIdentity.appLogoData ? 'transparent' : appIdentity.appColor }}>
+              {appIdentity.appLogoData
+                ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover" />
+                : appIdentity.appInitials}
+            </div>
+          )}
           <div>
             <div className="font-semibold text-sm text-gray-900">{appIdentity.appName}</div>
             <div className="text-xs text-gray-500">{appIdentity.appSubtitle}</div>

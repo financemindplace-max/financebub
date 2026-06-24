@@ -15,6 +15,7 @@ import { deleteYearData } from '@/lib/rtdb'
 import { useNotifications } from '@/lib/use-notifications'
 import { ref, onValue, off } from 'firebase/database'
 import { db } from '@/lib/firebase'
+import { normalizeAppInitials } from '@/lib/app-identity'
 
 const USER_ID = 'financebub-main'
 
@@ -146,7 +147,7 @@ export default function Sidebar() {
   const [appIdentity, setAppIdentity] = useState({
     appName: 'FinanceBub',
     appSubtitle: 'All Project',
-    appInitials: 'DK',
+    appInitials: '',
     appLogoData: '',
     appColor: '#1B8A7A',
   })
@@ -204,7 +205,7 @@ export default function Sidebar() {
       setAppIdentity({
         appName: global.appName || 'FinanceBub',
         appSubtitle: global.appSubtitle || 'All Project',
-        appInitials: global.appInitials || 'DK',
+        appInitials: normalizeAppInitials(global.appInitials),
         appLogoData: global.appLogoData || '',
         appColor: global.appColor || '#1B8A7A',
       })
@@ -285,12 +286,14 @@ export default function Sidebar() {
     <>
       <div className="md:hidden fixed left-0 right-0 top-0 h-14 bg-white border-b border-gray-100 z-50 flex items-center justify-between px-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs overflow-hidden flex-shrink-0"
-            style={{ background: appIdentity.appLogoData ? 'transparent' : appIdentity.appColor }}>
-            {appIdentity.appLogoData
-              ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover" />
-              : appIdentity.appInitials || 'DK'}
-          </div>
+          {(appIdentity.appLogoData || appIdentity.appInitials) && (
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs overflow-hidden flex-shrink-0"
+              style={{ background: appIdentity.appLogoData ? 'transparent' : appIdentity.appColor }}>
+              {appIdentity.appLogoData
+                ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover" />
+                : appIdentity.appInitials}
+            </div>
+          )}
           <div>
             <div className="text-xs font-semibold text-gray-900">{appIdentity.appName}</div>
             <div className="text-[10px] text-gray-400">{appIdentity.appSubtitle}</div>
@@ -315,12 +318,14 @@ export default function Sidebar() {
       <div className="px-4 py-4 border-b border-gray-100">
         <div className="flex items-start justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs flex-shrink-0 overflow-hidden"
-            style={{ background: appIdentity.appLogoData ? 'transparent' : appIdentity.appColor }}>
-            {appIdentity.appLogoData
-              ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover" />
-              : appIdentity.appInitials || 'DK'}
-          </div>
+          {(appIdentity.appLogoData || appIdentity.appInitials) && (
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs flex-shrink-0 overflow-hidden"
+              style={{ background: appIdentity.appLogoData ? 'transparent' : appIdentity.appColor }}>
+              {appIdentity.appLogoData
+                ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover" />
+                : appIdentity.appInitials}
+            </div>
+          )}
           <div className="min-w-0">
             <div className="text-xs font-semibold text-gray-900 truncate">{appIdentity.appName}</div>
             <div className="text-[10px] text-gray-400">{appIdentity.appSubtitle}</div>

@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react'
 import { fetchGlobal, saveGlobal } from '@/lib/rtdb'
+import { normalizeAppInitials } from '@/lib/app-identity'
 import {
   DEFAULT_COMPANY,
   DEFAULT_SIGNATORY,
@@ -102,7 +103,8 @@ export default function ProfilPerusahaanPage() {
   const [appIdentity, setAppIdentity] = useState({
     appName: 'FinanceBub',
     appSubtitle: 'All Project',
-    appInitials: 'DK',
+    appFooter: 'FinanceBUB',
+    appInitials: '',
     appLogoData: '',
     appColor: '#1B8A7A',
   })
@@ -118,7 +120,8 @@ export default function ProfilPerusahaanPage() {
       setAppIdentity({
         appName: (global as any).appName || 'FinanceBub',
         appSubtitle: (global as any).appSubtitle || 'All Project',
-        appInitials: (global as any).appInitials || 'DK',
+        appFooter: String((global as any).appFooter ?? 'FinanceBUB').trim() || 'FinanceBUB',
+        appInitials: normalizeAppInitials((global as any).appInitials),
         appLogoData: (global as any).appLogoData || '',
         appColor: (global as any).appColor || '#1B8A7A',
       })
@@ -307,6 +310,7 @@ export default function ProfilPerusahaanPage() {
         // Identitas Aplikasi
         appName: appIdentity.appName,
         appSubtitle: appIdentity.appSubtitle,
+        appFooter: appIdentity.appFooter,
         appInitials: appIdentity.appInitials,
         appLogoData: appIdentity.appLogoData,
         appColor: appIdentity.appColor,
@@ -606,12 +610,14 @@ export default function ProfilPerusahaanPage() {
           {/* ── Identitas Aplikasi ── */}
           <section className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                style={{ background: appIdentity.appColor }}>
-                {appIdentity.appLogoData
-                  ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover rounded-lg" />
-                  : appIdentity.appInitials || 'DK'}
-              </div>
+              {(appIdentity.appLogoData || appIdentity.appInitials) && (
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                  style={{ background: appIdentity.appLogoData ? 'transparent' : appIdentity.appColor }}>
+                  {appIdentity.appLogoData
+                    ? <img src={appIdentity.appLogoData} alt="logo" className="w-full h-full object-cover rounded-lg" />
+                    : appIdentity.appInitials}
+                </div>
+              )}
               <div>
                 <div className="text-sm font-semibold text-gray-900">Identitas Aplikasi</div>
                 <div className="text-[11px] text-gray-400">Nama & logo di sidebar</div>
@@ -629,10 +635,15 @@ export default function ProfilPerusahaanPage() {
                   onChange={e => { setSaved(false); setAppIdentity(v => ({ ...v, appSubtitle: e.target.value })) }}
                   placeholder="All Project" className={input} />
               </Field>
-              <Field label="Inisial (tampil jika tidak ada logo)">
+              <Field label="Teks Footer Login">
+                <input value={appIdentity.appFooter}
+                  onChange={e => { setSaved(false); setAppIdentity(v => ({ ...v, appFooter: e.target.value })) }}
+                  placeholder="FinanceBUB" className={input} />
+              </Field>
+              <Field label="Inisial (opsional, tampil jika tidak ada logo)">
                 <input value={appIdentity.appInitials}
                   onChange={e => { setSaved(false); setAppIdentity(v => ({ ...v, appInitials: e.target.value.slice(0, 3).toUpperCase() })) }}
-                  placeholder="DK" maxLength={3} className={input} />
+                  placeholder="FB" maxLength={3} className={input} />
               </Field>
               <Field label="Warna Utama">
                 <div className="flex items-center gap-2">
