@@ -479,7 +479,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: string,
     email: string,
     password: string,
-    registrationOtpRef: ReturnType<typeof ref>,
+    registrationOtp: string,
   ) => {
     const cleanName = name.trim()
     const cleanEmail = email.trim()
@@ -498,23 +498,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       throw signInError
     }
+
     const firebaseUser = credential.user
 
-    await createPendingAccess(
-      firebaseUser.uid,
-      cleanEmail,
-      cleanName || firebaseUser.displayName || buildFallbackName(cleanEmail),
-    )
+    try {
+      // RTDB FinanceBub hanya dapat dibaca setelah Firebase Auth aktif.
+      // Karena itu OTP pendaftaran harus diperiksa setelah akun berhasil login.
+      const registrationOtpRef = await readValidRegistrationOtp(registrationOtp)
 
-    if (cleanName && firebaseUser.displayName !== cleanName) {
-      await updateProfile(firebaseUser, { displayName: cleanName }).catch(() => {})
+      await createPendingAccess(
+        firebaseUser.uid,
+        cleanEmail,
+        cleanName || firebaseUser.displayName || buildFallbackName(cleanEmail),
+      )
+
+      if (cleanName && firebaseUser.displayName !== cleanName) {
+        await updateProfile(firebaseUser, { displayName: cleanName }).catch(() => {})
+      }
+
+      await update(registrationOtpRef, {
+        usedAt: Date.now(),
+        usedBy: firebaseUser.uid,
+        usedByEmail: cleanEmail,
+      })
+    } catch (error) {
+      clearOtpVerified(firebaseUser.uid)
+      await safeSignOut()
+      setUser(null)
+      throw error
     }
-
-    await update(registrationOtpRef, {
-      usedAt: Date.now(),
-      usedBy: firebaseUser.uid,
-      usedByEmail: cleanEmail,
-    })
 
     clearOtpVerified(firebaseUser.uid)
     await safeSignOut()
@@ -527,10 +539,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     loginFlowInProgress = true
     try {
-      const registrationOtpRef = await readValidRegistrationOtp(registrationOtp)
-
       let credential
       try {
+        // createUserWithEmailAndPassword otomatis membuat sesi Auth.
+        // Sesi ini diperlukan sebelum membaca registration_otps di RTDB.
         credential = await createUserWithEmailAndPassword(auth, cleanEmail, password)
       } catch (error) {
         const code = typeof error === 'object' && error && 'code' in error
@@ -538,7 +550,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           : ''
 
         if (code.includes('email-already-in-use')) {
-          await signUpExistingAuthAccount(cleanName, cleanEmail, password, registrationOtpRef)
+          await signUpExistingAuthAccount(cleanName, cleanEmail, password, registrationOtp)
           return
         }
 
@@ -546,6 +558,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
+        // Sebelumnya pengecekan ini dilakukan saat user belum login sehingga
+        // Firebase Realtime Database membalas "Permission denied".
+        const registrationOtpRef = await readValidRegistrationOtp(registrationOtp)
+
         if (cleanName) {
           await updateProfile(credential.user, { displayName: cleanName })
         }
@@ -566,6 +582,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await safeSignOut()
         setUser(null)
       } catch (error) {
+        // Jika OTP salah/expired atau database menolak proses, hapus akun Auth
+        // yang baru dibuat agar email tidak tersangkut sebagai akun yatim.
+        await remove(ref(db, `users_list/${credential.user.uid}`)).catch(() => {})
         await safeDeleteCurrentUser()
         await safeSignOut()
         setUser(null)
