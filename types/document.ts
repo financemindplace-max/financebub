@@ -49,6 +49,12 @@ export interface DocFields {
   's-tagline'?: string
   // Notes
   'q-notes'?: string
+  'q-disc-label'?: string
+  'q-gross-label'?: string
+  'q-extra1'?: string
+  'q-extra1-label'?: string
+  'q-extra2'?: string
+  'q-extra2-label'?: string
   'i-notes'?: string
   // Mata uang custom
   'cur-custom'?: string
@@ -87,6 +93,9 @@ export interface Doc {
   sigNH: number
   showSub: boolean
   showDisc?: boolean
+  showGross?: boolean
+  showExtra1?: boolean
+  showExtra2?: boolean
   fields: DocFields
   items: DocItem[]
   sendLogs?: DocSendLog[]

@@ -1,10 +1,11 @@
 'use client'
-import { useYearList, getActiveYear } from '@/lib/use-active-year'
+import { useYearList, getActiveYear, persistActiveYear } from '@/lib/use-active-year'
 import { useAuth } from '@/lib/auth-context'
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import DateInput from '@/components/DateInput'
 import { Plus, Trash2, Download, Save, WalletCards, Search, Upload, FileDown, Camera, Copy, Building2, Pencil, X, Check, Link } from 'lucide-react'
+import NextLink from 'next/link'
 import {
   MONTHS,
   accountDisplayName,
@@ -225,9 +226,9 @@ function parseCsv(text: string): CsvRow[] {
 function downloadCsvTemplate() {
   const header = ['TAHUN','BULAN','NAMA PT','BANK','NO REKENING','JENIS','TANGGAL','KETERANGAN','NOMINAL','KATEGORI','SALDO AWAL']
   const sample = [
-    ['2026','Maret','PT FinanceBub MEDIA KREATIF','BCA','6270344940','MASUK','2026-03-02','Project brand / pembayaran invoice','50000000','Pendapatan Jasa','1121453564'],
-    ['2026','Maret','PT FinanceBub MEDIA KREATIF','BCA','6270344940','KELUAR','2026-03-05','Bayar biaya produksi','1300000','HPP / Biaya Produksi',''],
-    ['2026','Maret','PT FinanceBub MEDIA SEJAHTERA','BNI','3000009091','KELUAR','2026-03-10','Transport team','500000','Transport',''],
+    ['2026','Maret','PT FINANCEBUB','BCA','6270344940','MASUK','2026-03-02','Project brand / pembayaran invoice','50000000','Pendapatan Jasa','1121453564'],
+    ['2026','Maret','PT FINANCEBUB','BCA','6270344940','KELUAR','2026-03-05','Bayar biaya produksi','1300000','HPP / Biaya Produksi',''],
+    ['2026','Maret','PT FINANCEBUB','BNI','3000009091','KELUAR','2026-03-10','Transport team','500000','Transport',''],
   ]
   const csv = [header, ...sample].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
@@ -257,10 +258,7 @@ export default function MutasiPage() {
 
   const setYear = (y: number) => {
     setYearRaw(y)
-    try {
-      localStorage.setItem('financebub_active_year', String(y))
-      window.dispatchEvent(new CustomEvent('financebub-year-change', { detail: y }))
-    } catch {}
+    persistActiveYear(y)
   }
 
   useEffect(() => {
@@ -307,7 +305,10 @@ export default function MutasiPage() {
     const queryYear = Number(params.get('year'))
     const queryMonth = Number(params.get('month'))
     const accountId = String(params.get('account') || '').trim()
-    if (queryYear >= 2020 && queryYear <= 2099) setYearRaw(queryYear)
+    if (queryYear >= 2020 && queryYear <= 2099) {
+      setYearRaw(queryYear)
+      persistActiveYear(queryYear)
+    }
     if (queryMonth >= 1 && queryMonth <= 12) setMonth(queryMonth)
     if (accountId) setSelectedAccount(accountId)
     setFocusTxId(txId)
@@ -522,6 +523,7 @@ export default function MutasiPage() {
   <div class="page">
     <div class="header">
       <div class="brand">
+        <div class="logo">BUB</div>
         <div>
           <h2>FinanceBub</h2>
           <div class="subtitle">Laporan mutasi kas/bank per rekening</div>
@@ -1338,9 +1340,9 @@ export default function MutasiPage() {
               </div>
                 {/* Multi-link badges (paymentLinks) */}
                 {(tx as LinkedFinanceTransaction).paymentLinks?.map((link, i) => (
-                  <span key={i} className={`inline-flex ml-2 mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${link.docType === 'invoice' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                  <NextLink key={i} href={`/${link.docType === 'invoice' ? 'invoice' : 'quotation'}?open=${encodeURIComponent(link.docNo)}&year=${link.docYear}`} className={`inline-flex ml-2 mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold hover:underline cursor-pointer ${link.docType === 'invoice' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
                     {link.docType === 'invoice' ? 'INV' : 'QUO'}: {link.docNo} · Rp {rupiah(link.amount, 0)}
-                  </span>
+                  </NextLink>
                 ))}
                 {(tx as LinkedFinanceTransaction).paymentLinks && (tx as LinkedFinanceTransaction).paymentLinks!.length > 0 && (
                   <div className="flex items-center gap-1 mt-1 ml-2">
@@ -1351,14 +1353,14 @@ export default function MutasiPage() {
                 {/* Single-link backward compat */}
                 {!(tx as LinkedFinanceTransaction).paymentLinks && (tx as LinkedFinanceTransaction).invoicePayment && (
                   <div className="flex items-center gap-1 mt-1 ml-2">
-                    <span className="inline-flex px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-semibold">INV: {(tx as LinkedFinanceTransaction).invoicePayment?.invoiceNo}</span>
+                    <NextLink href={`/invoice?open=${encodeURIComponent((tx as LinkedFinanceTransaction).invoicePayment?.invoiceNo || '')}&year=${(tx as LinkedFinanceTransaction).invoicePayment?.invoiceYear}`} className="inline-flex px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-semibold hover:underline cursor-pointer">INV: {(tx as LinkedFinanceTransaction).invoicePayment?.invoiceNo}</NextLink>
                     <button onClick={() => { setLinkingTx(tx as LinkedFinanceTransaction); setLinkItems([]); setLinkSearch('') }} className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 text-gray-400 hover:text-[#1B8A7A] hover:border-[#1B8A7A]">Ganti</button>
                     <button onClick={() => handleUnlinkTx(tx as LinkedFinanceTransaction)} className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-200">Hapus Link</button>
                   </div>
                 )}
                 {!(tx as LinkedFinanceTransaction).paymentLinks && (tx as LinkedFinanceTransaction).quotationPayment && (
                   <div className="flex items-center gap-1 mt-1 ml-2">
-                    <span className="inline-flex px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 text-[10px] font-semibold">QUO: {(tx as LinkedFinanceTransaction).quotationPayment?.quotationNo}</span>
+                    <NextLink href={`/quotation?open=${encodeURIComponent((tx as LinkedFinanceTransaction).quotationPayment?.quotationNo || '')}&year=${(tx as LinkedFinanceTransaction).quotationPayment?.quotationYear}`} className="inline-flex px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 text-[10px] font-semibold hover:underline cursor-pointer">QUO: {(tx as LinkedFinanceTransaction).quotationPayment?.quotationNo}</NextLink>
                     <button onClick={() => { setLinkingTx(tx as LinkedFinanceTransaction); setLinkItems([]); setLinkSearch('') }} className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 text-gray-400 hover:text-[#1B8A7A] hover:border-[#1B8A7A]">Ganti</button>
                     <button onClick={() => handleUnlinkTx(tx as LinkedFinanceTransaction)} className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-200">Hapus Link</button>
                   </div>

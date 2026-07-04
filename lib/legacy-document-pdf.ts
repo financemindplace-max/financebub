@@ -52,7 +52,16 @@ export type LegacyDocumentData = {
   currency: string
   subtotal: number
   discount: number
+  discLabel: string
   grossUp: number
+  grossLabel: string
+  extra1: number
+  extra2: number
+  extra1Label: string
+  extra2Label: string
+  showGross: boolean
+  showExtra1: boolean
+  showExtra2: boolean
   total: number
   showSub: boolean
   showDisc: boolean
@@ -205,8 +214,17 @@ export function prepareLegacyDocumentData(doc: Doc, kind: DocumentKind, global: 
   const items = activeItems(doc.items || [])
   const subtotal = items.reduce((sum, item) => sum + Number(item.amount || 0), 0)
   const discount = numberFrom(fields['q-disc'])
+  const discLabel = (fields['q-disc-label'] || '').trim() || 'Diskon'
   const grossUp = numberFrom(fields['q-gross'])
-  const total = subtotal - discount + grossUp
+  const grossLabel = (fields['q-gross-label'] || '').trim() || 'Gross Up'
+  const showGross = (doc as any)?.showGross !== false
+  const showExtra1 = Boolean((doc as any)?.showExtra1)
+  const showExtra2 = Boolean((doc as any)?.showExtra2)
+  const extra1 = showExtra1 ? numberFrom(fields['q-extra1']) : 0
+  const extra2 = showExtra2 ? numberFrom(fields['q-extra2']) : 0
+  const extra1Label = (fields['q-extra1-label'] || '').trim() || 'Penambah'
+  const extra2Label = (fields['q-extra2-label'] || '').trim() || 'Pengurang'
+  const total = subtotal - discount + (showGross ? grossUp : 0) + extra1 - extra2
   const currency = fields['q-cur'] === 'OTHER' ? (fields['cur-custom'] || 'XXX') : (fields['q-cur'] || 'IDR')
 
   return {
@@ -218,7 +236,16 @@ export function prepareLegacyDocumentData(doc: Doc, kind: DocumentKind, global: 
     currency,
     subtotal,
     discount,
+    discLabel,
     grossUp,
+    grossLabel,
+    extra1,
+    extra2,
+    extra1Label,
+    extra2Label,
+    showGross,
+    showExtra1,
+    showExtra2,
     total,
     showSub: doc.showSub !== false,
     showDisc: (doc as unknown as { showDisc?: boolean }).showDisc !== false,
@@ -238,7 +265,7 @@ export function buildLegacyPreviewHtml(data: LegacyDocumentData): string {
   const title = data.isQuotation ? 'QUOTATION' : 'INVOICE'
   const logo = data.logoData
     ? `<img src="${data.logoData}" style="max-height:42px;max-width:90px;object-fit:contain;display:block">`
-    : ''
+    : `<div style="width:40px;height:40px;background:${col};border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">BUB</div>`
   const signature = data.signatureData
     ? `<img src="${data.signatureData}" style="width:160px;max-height:70px;display:block;margin:0 auto;object-fit:contain;object-position:center bottom">`
     : '<div style="height:38px"></div>'
@@ -261,8 +288,8 @@ export function buildLegacyPreviewHtml(data: LegacyDocumentData): string {
 
   const totals = data.showSub
     ? `<div style="padding:6px 0"><table style="border-collapse:collapse;font-size:8px;margin-left:auto">
-        ${data.showDisc && data.discount ? `<tr><td style="padding:2px 0;color:#888;white-space:nowrap">Sub Total</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap">${fmt(data.subtotal)}</td></tr><tr><td style="padding:2px 0;color:#dc2626;white-space:nowrap">Diskon</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap;color:#dc2626">- ${fmt(data.discount)}</td></tr>` : `<tr><td style="padding:2px 0;color:#888;white-space:nowrap">Sub Total</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap">${fmt(data.discount ? data.subtotal - data.discount : data.subtotal)}</td></tr>`}
-        <tr><td style="padding:2px 0;color:#888;white-space:nowrap">Gross Up</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap">${fmt(data.grossUp)}</td></tr>
+        ${data.showDisc && data.discount ? `<tr><td style="padding:2px 0;color:#888;white-space:nowrap">Sub Total</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap">${fmt(data.subtotal)}</td></tr><tr><td style="padding:2px 0;color:#dc2626;white-space:nowrap">${data.discLabel}</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap;color:#dc2626">- ${fmt(data.discount)}</td></tr>` : `<tr><td style="padding:2px 0;color:#888;white-space:nowrap">Sub Total</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap">${fmt(data.discount ? data.subtotal - data.discount : data.subtotal)}</td></tr>`}
+        ${data.showGross ? `<tr><td style="padding:2px 0;color:#888;white-space:nowrap">${data.grossLabel}</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap">${fmt(data.grossUp)}</td></tr>` : ""}${data.showExtra1 ? `<tr><td style="padding:2px 0;color:#888;white-space:nowrap">${data.extra1Label}</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap">${fmt(data.extra1)}</td></tr>` : ""}${data.showExtra2 ? `<tr><td style="padding:2px 0;color:#888;white-space:nowrap">${data.extra2Label}</td><td style="padding:2px 6px;color:${col}">:</td><td style="padding:2px 0;text-align:right;white-space:nowrap">${fmt(data.extra2)}</td></tr>` : ""}
         <tr style="border-top:1px solid ${dC}"><td style="padding:4px 0 2px;font-weight:700;font-size:9px;color:${col};white-space:nowrap">Total Amount Due</td><td style="padding:4px 6px 2px;color:${col}"><b>:</b></td><td style="padding:4px 0 2px;text-align:right;font-weight:700;font-size:10px;color:${col};white-space:nowrap">${fmt(data.total)}</td></tr>
       </table></div>`
     : `<div style="display:flex;justify-content:flex-end;align-items:center;height:32px"><table style="border-collapse:collapse"><tr><td style="font-weight:700;text-align:right;font-size:9px;color:${col}">Total Amount Due</td><td style="padding:0 5px;color:${col}">:</td><td style="text-align:right;font-weight:700;font-size:10px;color:${col}">${fmt(data.total)}</td></tr></table></div>`
@@ -404,7 +431,13 @@ export async function downloadLegacyDocumentPdf(data: LegacyDocumentData): Promi
       textX = ml
     }
   } else {
-    textX = ml
+    fc(color.r, color.g, color.b)
+    doc.roundedRect(ml, logoY, logoMaxW, logoMaxH, 2, 2, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    tc(255, 255, 255)
+    doc.text('BUB', ml + logoMaxW / 2, logoY + logoMaxH / 2 + 1.5, { align: 'center' })
+    textX = ml + logoMaxW + 3
   }
 
   doc.setFont('helvetica', 'bold')
@@ -549,11 +582,13 @@ export async function downloadLegacyDocumentPdf(data: LegacyDocumentData): Promi
     const rows: [string, string, boolean][] = []
     if (data.showDisc && data.discount) {
       rows.push(['Sub Total', fmt(data.subtotal), false])
-      rows.push(['Diskon', `- ${fmt(data.discount)}`, true])
+      rows.push([data.discLabel, `- ${fmt(data.discount)}`, true])
     } else {
       rows.push(['Sub Total', data.discount ? fmt(data.subtotal - data.discount) : fmt(data.subtotal), false])
     }
-    rows.push(['Gross Up', fmt(data.grossUp), false])
+    if (data.showGross) rows.push([data.grossLabel, fmt(data.grossUp), false])
+    if (data.showExtra2) rows.push([data.extra2Label, fmt(data.extra2), false])
+    if (data.showExtra1) rows.push([data.extra1Label, fmt(data.extra1), false])
     rows.forEach(row => {
       tc(row[2] ? 180 : 120, row[2] ? 30 : 120, row[2] ? 0 : 120)
       doc.text(row[0], totalLabelX, y, { align: 'right' })

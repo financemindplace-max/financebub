@@ -24,8 +24,12 @@ export async function fetchDocs(year: number, type: 'q' | 'i'): Promise<Doc[]> {
 }
 
 // Save docs
+// logoData & sigData di-strip sebelum disimpan karena keduanya sudah tersimpan
+// di global config dan akan di-load ulang saat PDF digenerate.
+// Ini mencegah node Firebase membengkak melewati batas 10MB.
 export async function saveDocs(year: number, type: 'q' | 'i', docs: Doc[]): Promise<void> {
-  await set(ref(db, getDocPath(year, type)), JSON.stringify(docs))
+  const stripped = docs.map(({ logoData, sigData, ...rest }) => rest)
+  await set(ref(db, getDocPath(year, type)), JSON.stringify(stripped))
   // Update timestamp
   await set(ref(db, `users/${USER_ID}/data/_ts`), Date.now())
 }

@@ -36,6 +36,15 @@ export default function QuotationPage() {
   // Baca param dari URL — pasti fresh setiap navigasi
   const openNo = searchParams?.get('open')
   const backTo = searchParams?.get('back')
+  const yearParam = searchParams?.get('year')
+
+  // Saat dibuka dari link mutasi, set tahun ke tahun dokumen
+  useEffect(() => {
+    if (yearParam && years.includes(Number(yearParam))) {
+      setYear(Number(yearParam))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [yearParam])
 
   useEffect(() => {
     setLoading(true)
@@ -63,6 +72,13 @@ export default function QuotationPage() {
   const getTotal = (doc: Doc) => {
     const sub = doc.items?.reduce((a, i) => a + (+i.amount || 0), 0) || 0
     return sub - +(doc.fields?.['q-disc'] || 0) + +(doc.fields?.['q-gross'] || 0)
+  }
+
+  const getCurrencyLabel = (doc: Doc) => {
+    const cur = doc.fields?.['q-cur'] || 'IDR'
+    if (cur === 'IDR') return 'Rp'
+    if (cur === 'OTHER') return doc.fields?.['cur-custom'] || 'Rp'
+    return cur
   }
 
   const filtered = docs.filter(d => {
@@ -189,7 +205,7 @@ export default function QuotationPage() {
   if (view === 'form') {
     return (
       <QuotationForm
-        key={`quotation-form-${formNonce}-${selected?.id || 'new'}`}
+        key={`quotation-form-${formNonce}`}
         doc={selected}
         year={year}
         onSave={handleSave}
@@ -333,7 +349,7 @@ export default function QuotationPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className="text-sm font-bold" style={{ color: doc.theme || '#1B8A7A' }}>Rp {fmt(getTotal(doc))}</span>
+                      <span className="text-sm font-bold" style={{ color: doc.theme || '#1B8A7A' }}>{getCurrencyLabel(doc)} {fmt(getTotal(doc))}</span>
                       {user?.role !== 'viewer' && (
                         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                           onClick={e => e.stopPropagation()}>

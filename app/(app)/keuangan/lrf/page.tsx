@@ -1,5 +1,5 @@
 'use client'
-import { useYearList, getActiveYear } from '@/lib/use-active-year'
+import { useYearList, getActiveYear, persistActiveYear } from '@/lib/use-active-year'
 
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Download, DollarSign, X } from 'lucide-react'
@@ -40,10 +40,7 @@ export default function LRFPage() {
 
   const setYear = (y: number) => {
     setYearRaw(y)
-    try {
-      sessionStorage.setItem('financebub_active_year', String(y))
-      window.dispatchEvent(new CustomEvent('financebub-year-change', { detail: y }))
-    } catch {}
+    persistActiveYear(y)
   }
 
   useEffect(() => {
@@ -152,6 +149,7 @@ export default function LRFPage() {
 <body>
   <div class="header">
     <div class="brand">
+      <div class="logo">BUB</div>
       <div><h2>FinanceBub</h2><div style="color:#64748b;font-size:11px;margin-top:2px">L/R Final — Detail Kategori</div></div>
     </div>
     <div>

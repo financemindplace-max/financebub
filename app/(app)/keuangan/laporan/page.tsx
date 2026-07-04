@@ -1,5 +1,5 @@
 'use client'
-import { useYearList, getActiveYear } from '@/lib/use-active-year'
+import { useYearList, getActiveYear, persistActiveYear } from '@/lib/use-active-year'
 
 import { useEffect, useMemo, useState } from 'react'
 import { Download, FileBarChart, Search, RefreshCw, Plus, Trash2 } from 'lucide-react'
@@ -64,10 +64,7 @@ export default function LaporanPage() {
 
   const setYear = (y: number) => {
     setYearRaw(y)
-    try {
-      sessionStorage.setItem('financebub_active_year', String(y))
-      window.dispatchEvent(new CustomEvent('financebub-year-change', { detail: y }))
-    } catch {}
+    persistActiveYear(y)
   }
 
   useEffect(() => {

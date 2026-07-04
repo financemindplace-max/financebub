@@ -1,5 +1,5 @@
 'use client'
-import { useYearList } from '@/lib/use-active-year'
+import { useYearList, getActiveYear, persistActiveYear } from '@/lib/use-active-year'
 
 import { ChangeEvent, useMemo, useState } from 'react'
 import { CheckCircle2, Database, Download, FileSpreadsheet, Info, Upload, XCircle } from 'lucide-react'
@@ -252,7 +252,7 @@ function makeFinancePreview(rows: CsvRow[], defaultYear: number) {
 export default function ImportMassalPage() {
   const YEARS = useYearList()
   const [activeTab, setActiveTab] = useState<'dokumen' | 'mutasi'>('dokumen')
-  const [year, setYear] = useState(new Date().getFullYear())
+  const [year, setYear] = useState(() => getActiveYear())
   const [docMode, setDocMode] = useState<DocImportMode>('auto')
   const [duplicateMode, setDuplicateMode] = useState<DuplicateMode>('skip')
   const [docRows, setDocRows] = useState<CsvRow[]>([])
@@ -426,7 +426,7 @@ export default function ImportMassalPage() {
           <h1 className="text-xl font-semibold text-gray-900">Import Massal</h1>
           <p className="text-sm text-gray-400 mt-0.5">Pusat import data dokumen dan mutasi agar tidak input manual satu-satu.</p>
         </div>
-        <select value={year} onChange={e => setYear(Number(e.target.value))} className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#1B8A7A]">
+        <select value={year} onChange={e => { const nextYear = Number(e.target.value); setYear(nextYear); persistActiveYear(nextYear) }} className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#1B8A7A]">
           {YEARS.map(item => <option key={item} value={item}>{item}</option>)}
         </select>
       </div>

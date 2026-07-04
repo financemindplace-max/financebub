@@ -2,7 +2,7 @@
 import { useYearList, getActiveYear, persistActiveYear } from '@/lib/use-active-year'
 // ─── app/(app)/akumulasi/page.tsx ────────────────────────────────────────────
 
-import { Fragment, useEffect, useState, useCallback } from 'react'
+import { Fragment, useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
@@ -12,7 +12,7 @@ import { fetchDocs } from '@/lib/rtdb'
 import { getInvoicePayments, getQuotationPayments, unlinkMutasiPaymentTarget, updateLinkedDocumentPaymentStatus, type InvoicePaymentLog } from '@/lib/invoice-payment-link'
 import { fmt, fmtDate } from '@/lib/utils'
 import type { Doc } from '@/types/document'
-import { Download, Search, ChevronDown, ChevronUp, Lock, Unlink } from 'lucide-react'
+import { Download, Search, ChevronDown, ChevronUp, Lock, Unlink, Link2, Plus, X, ExternalLink } from 'lucide-react'
 
 const USER_ID = 'financebub-main'
 
@@ -45,6 +45,7 @@ interface AkumRow {
   targetDocNo?: string
   targetDocYear?: number
   targetProjectYear?: number
+  videoLinks?: { platform: string; url: string }[]
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -416,6 +417,7 @@ function bRows(quotations: Doc[], invoices: Doc[], akumulasi: AkumRow[], yr: num
       noQuo: noQuo || '', noInv: noInv || '', totalAmt: totalAmt || 0,
       statusInv: statusInv || '', due: due || '',
       tgl: m2.tgl || '', ket: m2.ket || '', nom: m2.nom || '', rek: m2.rek || '',
+      videoLinks: m2.videoLinks,
       isExtra: false, theme: theme || ''
     }
   }
@@ -554,8 +556,166 @@ function EditCell({ value, onChange, type = 'text', placeholder = '' }: {
 
 // ── Brand section ─────────────────────────────────────────────────────────────
 
+
+const DEFAULT_PLATFORMS = [
+  'YouTube Long',
+  'YouTube Shorts',
+  'Instagram Reels',
+  'Instagram Carousel',
+  'Instagram Stories',
+  'TikTok Video',
+  'TikTok Post',
+  'Website',
+]
+
+type VideoLink = { platform: string; url: string }
+
+function parseVideoLinks(raw: any[]): VideoLink[] {
+  if (!raw || !raw.length) return []
+  // Support format lama (string[]) maupun baru ({ platform, url }[])
+  return raw.map(item =>
+    typeof item === 'string'
+      ? { platform: '', url: item }
+      : { platform: item.platform || '', url: item.url || '' }
+  ).filter(l => l.url.trim())
+}
+
+function VideoLinksEditor({
+  rid, links, onUpdate, theme, customPlatforms, onAddCustomPlatform
+}: {
+  rid: string
+  links: any[]
+  onUpdate: (rid: string, links: VideoLink[]) => void
+  theme: string
+  customPlatforms: string[]
+  onAddCustomPlatform: (p: string) => void
+}) {
+  const parsed = parseVideoLinks(links)
+  const [rows, setRows] = useState<VideoLink[]>(parsed)
+  const isSelfUpdate = useRef(false)
+
+  useEffect(() => {
+    if (isSelfUpdate.current) { isSelfUpdate.current = false; return }
+    setRows(parseVideoLinks(links))
+  }, [JSON.stringify(links)])
+
+  const allPlatforms = [...DEFAULT_PLATFORMS, ...customPlatforms]
+
+  const handleChange = (i: number, field: 'platform' | 'url', val: string) => {
+    const next = [...rows]
+    next[i] = { ...next[i], [field]: val }
+    setRows(next)
+  }
+
+  const handleSave = (i: number) => {
+    const row = rows[i]
+    if (!row.url.trim()) return
+    isSelfUpdate.current = true
+    onUpdate(rid, rows.filter(r => r.url.trim()))
+  }
+
+  const handleDelete = (i: number) => {
+    const next = rows.filter((_, idx) => idx !== i)
+    setRows(next)
+    isSelfUpdate.current = true
+    onUpdate(rid, next.filter(r => r.url.trim()))
+  }
+
+  const handleAdd = () => {
+    setRows([...rows, { platform: '', url: '' }])
+  }
+
+  const handlePlatformInput = (i: number, val: string) => {
+    // Jika user mengetik platform baru yang belum ada di list, siapkan untuk ditambah
+    handleChange(i, 'platform', val)
+  }
+
+  const handlePlatformBlur = (i: number) => {
+    const val = rows[i].platform.trim()
+    if (val && !allPlatforms.includes(val)) {
+      onAddCustomPlatform(val)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 py-1">
+      <div className="flex items-center gap-1.5">
+        <Link2 className="w-3 h-3 text-gray-400" />
+        <span className="text-[10px] font-medium text-gray-400">Link video deliverable</span>
+      </div>
+      {rows.length > 0 && (
+        <table className="w-full text-[11px] border-collapse">
+          <thead>
+            <tr className="text-[10px] text-gray-400">
+              <th className="text-left font-medium pb-1 w-[160px]">Platform</th>
+              <th className="text-left font-medium pb-1 pl-2">Link</th>
+              <th className="w-[120px]" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className="group">
+                <td className="pr-2 py-0.5">
+                  <input
+                    list={`platforms-${rid}`}
+                    value={row.platform}
+                    onChange={e => handlePlatformInput(i, e.target.value)}
+                    onBlur={() => handlePlatformBlur(i)}
+                    placeholder="Pilih / ketik..."
+                    className="w-full text-[11px] px-2 py-1 border border-gray-200 rounded bg-white text-gray-700 placeholder:text-gray-300 focus:outline-none focus:border-gray-400"
+                  />
+                  <datalist id={`platforms-${rid}`}>
+                    {allPlatforms.map(p => <option key={p} value={p} />)}
+                  </datalist>
+                </td>
+                <td className="py-0.5 pl-2">
+                  <input
+                    type="url"
+                    value={row.url}
+                    onChange={e => handleChange(i, 'url', e.target.value)}
+                    placeholder="https://..."
+                    className="w-full text-[11px] px-2 py-1 border border-gray-200 rounded bg-white text-gray-700 placeholder:text-gray-300 focus:outline-none focus:border-gray-400"
+                  />
+                </td>
+                <td className="py-0.5 pl-2">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleSave(i)}
+                      disabled={!row.url.trim()}
+                      className="px-2.5 py-1 text-[10px] font-medium rounded text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                      style={{ backgroundColor: theme || '#1B8A7A' }}
+                    >
+                      Simpan
+                    </button>
+                    {row.url.trim() && (
+                      <a href={row.url.trim()} target="_blank" rel="noopener noreferrer"
+                        className="p-1 text-gray-400 hover:text-blue-500 transition" title="Buka link">
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    <button onClick={() => handleDelete(i)}
+                      className="p-1 text-gray-200 hover:text-red-400 transition" title="Hapus baris">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <button onClick={handleAdd}
+        className="self-start flex items-center gap-1 text-[10px] px-2 py-0.5 border border-dashed border-gray-300 rounded text-gray-400 hover:text-gray-600 hover:border-gray-400 transition">
+        <Plus className="w-3 h-3" />
+        Tambah link
+      </button>
+    </div>
+  )
+}
+
+
 function BrandSection({
-  brand, rows, year, onUpdate, onAddCicilan, onDeleteCicilan, onUnlinkMutasi, onCountAsPaid, onOpenDoc, onOpenMutasi
+  brand, rows, year, onUpdate, onAddCicilan, onDeleteCicilan, onUnlinkMutasi, onCountAsPaid, onOpenDoc, onOpenMutasi, onUpdateVideoLinks, customPlatforms, onAddCustomPlatform
 }: {
   brand: string
   rows: AkumRow[]
@@ -567,6 +727,9 @@ function BrandSection({
   onCountAsPaid: (parentRid: string, er: AkumRow, checked: boolean, totalAmt: number, noInv: string, noQuo: string, yr: number) => void
   onOpenDoc: (type: 'invoice' | 'quotation', docNo: string) => void
   onOpenMutasi: (row: AkumRow) => void
+  onUpdateVideoLinks: (rid: string, links: { platform: string; url: string }[]) => void
+  customPlatforms: string[]
+  onAddCustomPlatform: (p: string) => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
 
@@ -769,6 +932,19 @@ function BrandSection({
                       </tr>
                       )
                     })}
+                    {/* Video Links Row */}
+                    <tr className="border-b border-gray-100 bg-gray-50/40">
+                      <td colSpan={12} className="px-3 py-2">
+                        <VideoLinksEditor
+                          rid={fr.rid}
+                          links={fr.videoLinks || []}
+                          onUpdate={onUpdateVideoLinks}
+                          theme={fr.theme || '#1B8A7A'}
+                          customPlatforms={customPlatforms}
+                          onAddCustomPlatform={onAddCustomPlatform}
+                        />
+                      </td>
+                    </tr>
                   </Fragment>
                 )
               })}
@@ -837,13 +1013,17 @@ export default function AkumulasiPage() {
   const [searchQuery, setSearchQuery] = useState('')
 
   const akumPath = `users/${USER_ID}/data/yr_${year}_a`
+  const [customPlatforms, setCustomPlatforms] = useState<string[]>([])
 
   useEffect(() => {
     setLoading(true)
     let qDone = false, iDone = false, aDone = false
     const check = () => { if (qDone && iDone && aDone) setLoading(false) }
 
-    const SCAN_YEARS = Array.from({ length: 8 }, (_, i) => new Date().getFullYear() + 2 - i)
+    const SCAN_YEARS = Array.from(
+      { length: new Date().getFullYear() + 3 - 2020 + 1 },
+      (_, index) => 2020 + index,
+    ).sort((a, b) => b - a)
     const qByYear: Record<number, Doc[]> = {}
     const iByYear: Record<number, Doc[]> = {}
     let qCount = 0, iCount = 0
@@ -921,6 +1101,19 @@ export default function AkumulasiPage() {
       // New entry from bRows that doesn't exist in akumulasi yet
       const fromRows = rows.find(r => r.rid === rid)
       if (fromRows) updated.push({ ...fromRows, [field]: value })
+    }
+    setAkumulasi(updated)
+    await saveArr(akumPath, updated)
+  }, [akumulasi, rows, akumPath])
+
+  const handleUpdateVideoLinks = useCallback(async (rid: string, links: { platform: string; url: string }[]) => {
+    const updated = [...akumulasi]
+    const idx = updated.findIndex(r => r.rid === rid)
+    if (idx >= 0) {
+      updated[idx] = { ...updated[idx], videoLinks: links }
+    } else {
+      const fromRows = rows.find(r => r.rid === rid)
+      if (fromRows) updated.push({ ...fromRows, videoLinks: links })
     }
     setAkumulasi(updated)
     await saveArr(akumPath, updated)
@@ -1112,6 +1305,9 @@ Transaksi bank tetap ada. Hanya link ke dokumen ini yang dilepas.`)) return
             onOpenDoc={(type, docNo) => {
               router.push(`/${type}?open=${encodeURIComponent(docNo)}&back=akumulasi`)
             }}
+            onUpdateVideoLinks={handleUpdateVideoLinks}
+            customPlatforms={customPlatforms}
+            onAddCustomPlatform={p => setCustomPlatforms(prev => prev.includes(p) ? prev : [...prev, p])}
             onOpenMutasi={row => {
               const href = buildMutasiHref(row)
               if (href) router.push(href)

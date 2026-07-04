@@ -93,7 +93,10 @@ export default function DashboardPage() {
     setLoading(true)
 
     // Scan 8 tahun terbit, filter by project-year
-    const SCAN_YEARS = Array.from({ length: 8 }, (_, i) => new Date().getFullYear() + 2 - i)
+    const SCAN_YEARS = Array.from(
+      { length: new Date().getFullYear() + 3 - 2020 + 1 },
+      (_, index) => 2020 + index,
+    ).sort((a, b) => b - a)
     const qByYear: Record<number, Doc[]> = {}
     const iByYear: Record<number, Doc[]> = {}
     let qCount = 0, iCount = 0

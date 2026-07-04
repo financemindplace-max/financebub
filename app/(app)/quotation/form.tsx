@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Plus, Trash2, Save, Eye, Download } from 'lucide-react'
 import { fmt } from '@/lib/utils'
 import { useAuth } from '@/lib/auth-context'
@@ -77,7 +77,10 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
   const [currentDocId] = useState(doc?.id || Date.now())
   const [theme, setTheme] = useState(doc?.theme || '#1B8A7A')
   const [showSub, setShowSub] = useState(doc?.showSub !== false)
+  const [showGross, setShowGross] = useState(() => (doc as any)?.showGross !== false)
   const [showDisc, setShowDisc] = useState(() => ((doc as unknown as { showDisc?: boolean } | null)?.showDisc ?? true))
+  const [showExtra1, setShowExtra1] = useState(() => Boolean((doc as any)?.showExtra1))
+  const [showExtra2, setShowExtra2] = useState(() => Boolean((doc as any)?.showExtra2))
   const [logoData, setLogoData] = useState<string | null>(doc?.logoData || null)
   const [sigData, setSigData] = useState<string | null>(doc?.sigData || null)
   const [sigNW, setSigNW] = useState(doc?.sigNW || 0)
@@ -85,6 +88,7 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
   const [saving, setSaving] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [isSavedClean, setIsSavedClean] = useState(false)
+  const prevYearRef = useRef(year)
   const [autoNo, setAutoNo] = useState('')
   const [companies, setCompanies] = useState<CompanyProfile[]>([])
   const [selectedCompanyId, setSelectedCompanyId] = useState(doc?.fields?.companyProfileId || '')
@@ -128,6 +132,11 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
 
   // Generate auto nomor awal dengan format QTT-BUB-MMYY-NN.
   useEffect(() => {
+    // Hanya reset isSavedClean jika tahun benar-benar berganti (bukan setiap re-render)
+    if (prevYearRef.current !== year) {
+      prevYearRef.current = year
+      setIsSavedClean(false)
+    }
     if (!isEdit) {
       const activeYearDate = defaultDateForActiveYear(year)
       const no = formatDocumentNumber('quotation', globalConfig, activeYearDate)
@@ -232,7 +241,9 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
   const subtotal = items.reduce((a, i) => a + (+i.amount || 0), 0)
   const disc = +(fields['q-disc'] || 0)
   const gross = +(fields['q-gross'] || 0)
-  const total = subtotal - disc + gross
+  const extra1 = showExtra1 ? +(fields['q-extra1'] || 0) : 0
+  const extra2 = showExtra2 ? +(fields['q-extra2'] || 0) : 0
+  const total = subtotal - disc + (showGross ? gross : 0) + extra1 - extra2
 
   const buildDoc = (): Doc => {
     const now = new Date().toISOString()
@@ -247,7 +258,10 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
       sigNW,
       sigNH,
       showSub,
+      showGross,
       showDisc,
+      showExtra1,
+      showExtra2,
       fields: { ...fields, 'project-year': projectYear },
       items,
       sendLogs: doc?.sendLogs,
@@ -267,16 +281,30 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
     setSaving(true)
     try {
       await onSave(draft)
-      if (shouldAdvanceCounter) {
-        const parsed = parseDocumentNumber(draft.fields['q-no'])
-        const cfg = getDocumentNumberConfig(globalConfig, 'quotation')
-        const next = Math.max(cfg.next, (parsed?.sequence || 0) + 1)
-        const updates = buildNextNumberUpdates('quotation', next)
-        await saveGlobal(updates)
-        setGlobalConfig(current => ({ ...current, ...updates }))
-      }
+      // Dokumen sudah berhasil tersimpan. Tandai form sebagai bersih lebih dulu
+      // agar tombol "Buat Quotation Baru" tetap muncul meskipun update nomor urut gagal.
       setIsSavedClean(true)
-    } finally { setSaving(false) }
+
+      if (shouldAdvanceCounter) {
+        try {
+          const parsed = parseDocumentNumber(draft.fields['q-no'])
+          const cfg = getDocumentNumberConfig(globalConfig, 'quotation')
+          const next = Math.max(cfg.next, (parsed?.sequence || 0) + 1)
+          const updates = buildNextNumberUpdates('quotation', next)
+          await saveGlobal(updates)
+          setGlobalConfig(current => ({ ...current, ...updates }))
+        } catch (counterError) {
+          console.error('Quotation tersimpan, tetapi nomor urut berikutnya gagal diperbarui:', counterError)
+          alert('Quotation sudah tersimpan, tetapi nomor urut berikutnya gagal diperbarui. Periksa koneksi sebelum membuat quotation baru.')
+        }
+      }
+    } catch (error) {
+      console.error('Gagal menyimpan quotation:', error)
+      setIsSavedClean(false)
+      alert(error instanceof Error ? `Gagal menyimpan quotation: ${error.message}` : 'Gagal menyimpan quotation')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDownloadPdf = async () => {
@@ -588,42 +616,98 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
               <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" checked={showSub} onChange={e => { markDirty(); setShowSub(e.target.checked) }} className="accent-[#1B8A7A]" />
-                Tampilkan Sub Total & Gross Up
+                Tampilkan Sub Total
               </label>
-              {showSub && (
-                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                  <input type="checkbox" checked={showDisc} onChange={e => { markDirty(); setShowDisc(e.target.checked) }} className="accent-[#1B8A7A]" />
-                  Tampilkan Diskon
-                </label>
-              )}
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={showGross} onChange={e => { markDirty(); setShowGross(e.target.checked) }} className="accent-[#1B8A7A]" />
+                Tampilkan Gross Up
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={showDisc} onChange={e => { markDirty(); setShowDisc(e.target.checked) }} className="accent-[#1B8A7A]" />
+                Tampilkan Diskon
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={showExtra1} onChange={e => { markDirty(); setShowExtra1(e.target.checked) }} className="accent-[#1B8A7A]" />
+                + Baris Penambah
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={showExtra2} onChange={e => { markDirty(); setShowExtra2(e.target.checked) }} className="accent-[#1B8A7A]" />
+                − Baris Pengurang
+              </label>
             </div>
             {showSub && (
-              <>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Sub Total</span>
-                  <span className="font-medium">Rp {fmt(subtotal)}</span>
-                </div>
-                {showDisc && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Diskon</span>
-                    <input
-                      type="number"
-                      value={fields['q-disc'] || '0'}
-                      onChange={e => setField('q-disc', e.target.value)}
-                      className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm text-red-500"
-                    />
-                  </div>
-                )}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Gross Up</span>
-                  <input
-                    type="number"
-                    value={fields['q-gross'] || '0'}
-                    onChange={e => setField('q-gross', e.target.value)}
-                    className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm"
-                  />
-                </div>
-              </>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Sub Total</span>
+                <span className="font-medium">Rp {fmt(subtotal)}</span>
+              </div>
+            )}
+            {showDisc && (
+              <div className="flex items-center justify-between text-sm">
+                <input
+                  type="text"
+                  value={fields['q-disc-label'] || ''}
+                  onChange={e => setField('q-disc-label', e.target.value)}
+                  placeholder="Diskon"
+                  className="text-gray-500 bg-transparent border-none outline-none w-32 text-sm placeholder:text-gray-400"
+                />
+                <input
+                  type="number"
+                  value={fields['q-disc'] || '0'}
+                  onChange={e => setField('q-disc', e.target.value)}
+                  className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm text-red-500"
+                />
+              </div>
+            )}
+            {showExtra2 && (
+              <div className="flex items-center justify-between text-sm">
+                <input
+                  type="text"
+                  value={fields['q-extra2-label'] || ''}
+                  onChange={e => setField('q-extra2-label', e.target.value)}
+                  placeholder="Pengurang"
+                  className="text-gray-500 bg-transparent border-none outline-none w-32 text-sm placeholder:text-gray-400"
+                />
+                <input
+                  type="number"
+                  value={fields['q-extra2'] || '0'}
+                  onChange={e => setField('q-extra2', e.target.value)}
+                  className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm text-red-500"
+                />
+              </div>
+            )}
+            {showGross && (
+              <div className="flex items-center justify-between text-sm">
+                <input
+                  type="text"
+                  value={fields['q-gross-label'] || ''}
+                  onChange={e => setField('q-gross-label', e.target.value)}
+                  placeholder="Gross Up"
+                  className="text-gray-500 bg-transparent border-none outline-none w-32 text-sm placeholder:text-gray-400"
+                />
+                <input
+                  type="number"
+                  value={fields['q-gross'] || '0'}
+                  onChange={e => setField('q-gross', e.target.value)}
+                  className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm"
+                />
+              </div>
+            )}
+            {showExtra1 && (
+              <div className="flex items-center justify-between text-sm">
+                <input
+                  type="text"
+                  value={fields['q-extra1-label'] || ''}
+                  onChange={e => setField('q-extra1-label', e.target.value)}
+                  placeholder="Penambah"
+                  className="text-gray-500 bg-transparent border-none outline-none w-32 text-sm placeholder:text-gray-400"
+                />
+                <input
+                  type="number"
+                  value={fields['q-extra1'] || '0'}
+                  onChange={e => setField('q-extra1', e.target.value)}
+                  className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm text-green-600"
+                />
+              </div>
             )}
             <div className="flex items-center justify-between text-sm font-semibold pt-2 border-t border-gray-100">
               <span>Total Amount Due</span>

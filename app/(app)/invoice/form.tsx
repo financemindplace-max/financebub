@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Plus, Trash2, Save, Eye, FileText, Search, X, ChevronRight, Download } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { fmt, fmtDate } from '@/lib/utils'
@@ -305,6 +305,9 @@ export default function InvoiceForm({ doc, year, onSave, onBack, onPreview, onCr
     return doc?.theme || '#185FA5'
   })
   const [showSub, setShowSub] = useState(doc?.showSub !== false)
+  const [showGross, setShowGross] = useState(() => (doc as any)?.showGross !== false)
+  const [showExtra1, setShowExtra1] = useState(() => Boolean((doc as any)?.showExtra1))
+  const [showExtra2, setShowExtra2] = useState(() => Boolean((doc as any)?.showExtra2))
   const [showDisc, setShowDisc] = useState(() => {
     if (!isEdit && fromQuo && quoData) return ((quoData as unknown as { showDisc?: boolean }).showDisc ?? true)
     return ((doc as unknown as { showDisc?: boolean } | null)?.showDisc ?? true)
@@ -316,6 +319,7 @@ export default function InvoiceForm({ doc, year, onSave, onBack, onPreview, onCr
   const [saving, setSaving] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [isSavedClean, setIsSavedClean] = useState(false)
+  const prevYearRef = useRef(year)
   const [showPicker, setShowPicker] = useState(false)
   const [showRefPicker, setShowRefPicker] = useState(false)
   const [companies, setCompanies] = useState<CompanyProfile[]>([])
@@ -371,6 +375,11 @@ export default function InvoiceForm({ doc, year, onSave, onBack, onPreview, onCr
   }, [fromQuo])
 
   useEffect(() => {
+    // Hanya reset isSavedClean jika tahun benar-benar berganti (bukan setiap re-render)
+    if (prevYearRef.current !== year) {
+      prevYearRef.current = year
+      setIsSavedClean(false)
+    }
     if (!isEdit) {
       const activeYearDate = defaultDateForActiveYear(year)
       const no = formatDocumentNumber('invoice', globalConfig, activeYearDate)
@@ -504,21 +513,27 @@ export default function InvoiceForm({ doc, year, onSave, onBack, onPreview, onCr
     }))
     setItems(q.items?.length ? q.items : [{ brand: '', item: '', sow: '', amount: 0 }])
     setTheme(q.theme || '#185FA5')
-    setLogoData(q.logoData || logoData)
-    setSigData(q.sigData || sigData)
+    // logoData & sigData sudah di-strip dari Firebase (fix 10MB limit),
+    // fallback ke globalConfig agar logo & tanda tangan tetap muncul
+    setLogoData(q.logoData || logoData || String(globalConfig.logoData || '') || null)
+    setSigData(q.sigData || sigData || String(globalConfig.directorSignatureData || globalConfig.sigData || '') || null)
     setSigNW(q.sigNW || sigNW)
     setSigNH(q.sigNH || sigNH)
     if (q.fields.companyProfileId) setSelectedCompanyId(q.fields.companyProfileId)
     if (q.fields.paymentAccountId) setSelectedAccountId(q.fields.paymentAccountId)
     if ((q.fields as any)['project-year']) setProjectYear((q.fields as any)['project-year'])
     setImportedFrom(q.fields['q-no'] || 'Quotation')
+    // Sync clientQ agar input Nama Klien ikut terisi
+    setClientQ(q.fields['cl-name'] || '')
     setShowPicker(false)
   }
 
   const subtotal = items.reduce((a, i) => a + (+i.amount || 0), 0)
   const disc = +(fields['q-disc'] || 0)
   const gross = +(fields['q-gross'] || 0)
-  const total = subtotal - disc + gross
+  const extra1 = showExtra1 ? +(fields['q-extra1'] || 0) : 0
+  const extra2 = showExtra2 ? +(fields['q-extra2'] || 0) : 0
+  const total = subtotal - disc + gross + extra1 - extra2
 
   const buildDoc = (): Doc => {
     const now = new Date().toISOString()
@@ -533,7 +548,10 @@ export default function InvoiceForm({ doc, year, onSave, onBack, onPreview, onCr
       sigNW,
       sigNH,
       showSub,
+      showGross,
       showDisc,
+      showExtra1,
+      showExtra2,
       fields: { ...fields, 'project-year': projectYear },
       items,
       sendLogs: doc?.sendLogs,
@@ -553,16 +571,30 @@ export default function InvoiceForm({ doc, year, onSave, onBack, onPreview, onCr
     setSaving(true)
     try {
       await onSave(draft)
-      if (shouldAdvanceCounter) {
-        const parsed = parseDocumentNumber(draft.fields['i-no'])
-        const cfg = getDocumentNumberConfig(globalConfig, 'invoice')
-        const next = Math.max(cfg.next, (parsed?.sequence || 0) + 1)
-        const updates = buildNextNumberUpdates('invoice', next)
-        await saveGlobal(updates)
-        setGlobalConfig(current => ({ ...current, ...updates }))
-      }
+      // Dokumen sudah berhasil tersimpan. Tandai form sebagai bersih lebih dulu
+      // agar tombol "Buat Invoice Baru" tetap muncul meskipun update nomor urut gagal.
       setIsSavedClean(true)
-    } finally { setSaving(false) }
+
+      if (shouldAdvanceCounter) {
+        try {
+          const parsed = parseDocumentNumber(draft.fields['i-no'])
+          const cfg = getDocumentNumberConfig(globalConfig, 'invoice')
+          const next = Math.max(cfg.next, (parsed?.sequence || 0) + 1)
+          const updates = buildNextNumberUpdates('invoice', next)
+          await saveGlobal(updates)
+          setGlobalConfig(current => ({ ...current, ...updates }))
+        } catch (counterError) {
+          console.error('Invoice tersimpan, tetapi nomor urut berikutnya gagal diperbarui:', counterError)
+          alert('Invoice sudah tersimpan, tetapi nomor urut berikutnya gagal diperbarui. Periksa koneksi sebelum membuat invoice baru.')
+        }
+      }
+    } catch (error) {
+      console.error('Gagal menyimpan invoice:', error)
+      setIsSavedClean(false)
+      alert(error instanceof Error ? `Gagal menyimpan invoice: ${error.message}` : 'Gagal menyimpan invoice')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDownloadPdf = async () => {
@@ -881,32 +913,54 @@ export default function InvoiceForm({ doc, year, onSave, onBack, onPreview, onCr
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                 <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                   <input type="checkbox" checked={showSub} onChange={e => { markDirty(); setShowSub(e.target.checked) }} className="accent-[#185FA5]" />
-                  Tampilkan Sub Total & Gross Up
+                  Tampilkan Sub Total
                 </label>
-                {showSub && (
-                  <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                    <input type="checkbox" checked={showDisc} onChange={e => { markDirty(); setShowDisc(e.target.checked) }} className="accent-[#185FA5]" />
-                    Tampilkan Diskon
-                  </label>
-                )}
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={showGross} onChange={e => { markDirty(); setShowGross(e.target.checked) }} className="accent-[#185FA5]" />
+                  Tampilkan Gross Up
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={showDisc} onChange={e => { markDirty(); setShowDisc(e.target.checked) }} className="accent-[#185FA5]" />
+                  Tampilkan Diskon
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={showExtra1} onChange={e => { markDirty(); setShowExtra1(e.target.checked) }} className="accent-[#185FA5]" />
+                  + Baris Penambah
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={showExtra2} onChange={e => { markDirty(); setShowExtra2(e.target.checked) }} className="accent-[#185FA5]" />
+                  − Baris Pengurang
+                </label>
               </div>
               {showSub && (
-                <>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Sub Total</span>
-                    <span className="font-medium">Rp {fmt(subtotal)}</span>
-                  </div>
-                  {showDisc && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Diskon</span>
-                      <input type="number" value={fields['q-disc'] || '0'} onChange={e => setField('q-disc', e.target.value)} className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm text-red-500" />
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Gross Up</span>
-                    <input type="number" value={fields['q-gross'] || '0'} onChange={e => setField('q-gross', e.target.value)} className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm" />
-                  </div>
-                </>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">Sub Total</span>
+                  <span className="font-medium">Rp {fmt(subtotal)}</span>
+                </div>
+              )}
+              {showDisc && (
+                <div className="flex items-center justify-between text-sm">
+                  <input type="text" value={fields['q-disc-label'] || ''} onChange={e => setField('q-disc-label', e.target.value)} placeholder="Diskon" className="text-gray-500 bg-transparent border-none outline-none w-32 text-sm placeholder:text-gray-400" />
+                  <input type="number" value={fields['q-disc'] || '0'} onChange={e => setField('q-disc', e.target.value)} className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm text-red-500" />
+                </div>
+              )}
+              {showExtra2 && (
+                <div className="flex items-center justify-between text-sm">
+                  <input type="text" value={fields['q-extra2-label'] || ''} onChange={e => setField('q-extra2-label', e.target.value)} placeholder="Pengurang" className="text-gray-500 bg-transparent border-none outline-none w-32 text-sm placeholder:text-gray-400" />
+                  <input type="number" value={fields['q-extra2'] || '0'} onChange={e => setField('q-extra2', e.target.value)} className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm text-red-500" />
+                </div>
+              )}
+              {showGross && (
+                <div className="flex items-center justify-between text-sm">
+                  <input type="text" value={fields['q-gross-label'] || ''} onChange={e => setField('q-gross-label', e.target.value)} placeholder="Gross Up" className="text-gray-500 bg-transparent border-none outline-none w-32 text-sm placeholder:text-gray-400" />
+                  <input type="number" value={fields['q-gross'] || '0'} onChange={e => setField('q-gross', e.target.value)} className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm" />
+                </div>
+              )}
+              {showExtra1 && (
+                <div className="flex items-center justify-between text-sm">
+                  <input type="text" value={fields['q-extra1-label'] || ''} onChange={e => setField('q-extra1-label', e.target.value)} placeholder="Penambah" className="text-gray-500 bg-transparent border-none outline-none w-32 text-sm placeholder:text-gray-400" />
+                  <input type="number" value={fields['q-extra1'] || '0'} onChange={e => setField('q-extra1', e.target.value)} className="w-32 text-right px-2 py-1 border border-gray-200 rounded text-sm text-green-600" />
+                </div>
               )}
               <div className="flex items-center justify-between text-sm font-semibold pt-2 border-t border-gray-100">
                 <span>Total Amount Due</span>

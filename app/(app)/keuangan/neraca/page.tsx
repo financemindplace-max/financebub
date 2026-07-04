@@ -1,5 +1,5 @@
 'use client'
-import { useYearList, getActiveYear } from '@/lib/use-active-year'
+import { useYearList, getActiveYear, persistActiveYear } from '@/lib/use-active-year'
 
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Download, Scale } from 'lucide-react'
@@ -27,10 +27,7 @@ export default function NeracaPage() {
 
   const setYear = (y: number) => {
     setYearRaw(y)
-    try {
-      sessionStorage.setItem('financebub_active_year', String(y))
-      window.dispatchEvent(new CustomEvent('financebub-year-change', { detail: y }))
-    } catch {}
+    persistActiveYear(y)
   }
 
   useEffect(() => {

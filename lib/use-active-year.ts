@@ -7,7 +7,19 @@ export const YEAR_OPTIONS_STORAGE_KEY = 'financebub_year_options'
 
 export function defaultYearOptions() {
   const now = new Date().getFullYear()
-  return [now + 1, now, now - 1].filter(y => y >= 2020 && y <= 2099).sort((a, b) => b - a)
+  return Array.from({ length: now + 3 - 2020 + 1 }, (_, index) => 2020 + index)
+    .filter(year => year >= 2020 && year <= 2099)
+    .sort((a, b) => b - a)
+}
+
+function migrateLegacyYearOptions(years: number[]) {
+  const now = new Date().getFullYear()
+  const legacyRecentOnly = years.length > 0
+    && years.length <= 4
+    && years.every(year => year >= now - 2 && year <= now + 2)
+  return legacyRecentOnly
+    ? Array.from(new Set([...defaultYearOptions(), ...years])).sort((a, b) => b - a)
+    : years
 }
 
 function cleanYear(value: unknown, fallback = new Date().getFullYear()) {
@@ -39,7 +51,11 @@ export function getYearOptions(extraYears: number[] = []) {
       const storedYears = Array.isArray(stored)
         ? stored.map(Number).filter(y => Number.isFinite(y) && y >= 2020 && y <= 2099)
         : []
-      const base = storedYears.length > 0 ? storedYears : defaultYearOptions()
+      const migratedYears = migrateLegacyYearOptions(storedYears)
+      if (migratedYears.length !== storedYears.length) {
+        localStorage.setItem(YEAR_OPTIONS_STORAGE_KEY, JSON.stringify(migratedYears))
+      }
+      const base = migratedYears.length > 0 ? migratedYears : defaultYearOptions()
       return Array.from(new Set([...base, ...extraYears]))
         .filter(year => Number.isFinite(year) && year >= 2020 && year <= 2099)
         .sort((a, b) => b - a)
@@ -61,6 +77,7 @@ export function useYearList() {
   useEffect(() => {
     const update = () => setYearList(getYearOptions())
     window.addEventListener('financebub-year-change', update)
+    window.addEventListener('financebub-year-options-change', update)
     // Hanya update yearList kalau YEAR_OPTIONS_STORAGE_KEY berubah (bukan active year)
     const handleStorage = (event: StorageEvent) => {
       if (event.key === YEAR_OPTIONS_STORAGE_KEY) update()
@@ -68,6 +85,7 @@ export function useYearList() {
     window.addEventListener('storage', handleStorage)
     return () => {
       window.removeEventListener('financebub-year-change', update)
+      window.removeEventListener('financebub-year-options-change', update)
       window.removeEventListener('storage', handleStorage)
     }
   }, [])
@@ -81,7 +99,8 @@ export function persistActiveYear(year: number) {
   try {
     // sessionStorage: hanya berlaku untuk tab ini
     sessionStorage.setItem(ACTIVE_YEAR_STORAGE_KEY, String(clean))
-    // localStorage: hanya untuk daftar tahun yang tersedia (shared antar tab, tidak masalah)
+    // localStorage dipertahankan untuk kompatibilitas halaman lama dan tab baru.
+    localStorage.setItem(ACTIVE_YEAR_STORAGE_KEY, String(clean))
     localStorage.setItem(YEAR_OPTIONS_STORAGE_KEY, JSON.stringify(years))
     window.dispatchEvent(new CustomEvent('financebub-year-change', { detail: clean }))
   } catch {}

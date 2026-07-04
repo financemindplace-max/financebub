@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useYearList, getActiveYear } from '@/lib/use-active-year'
+import { useYearList, getActiveYear, persistActiveYear } from '@/lib/use-active-year'
 import { Download, FileSpreadsheet } from 'lucide-react'
 import { MONTHS, fetchMonth, rupiah, type FinanceMonthData, type FinanceTransaction } from '@/lib/finance'
 
@@ -243,6 +243,7 @@ td{padding:6px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}
 <body>
 <div class="header">
   <div class="brand">
+    <div class="logo">BUB</div>
     <div><h2>FinanceBub</h2><div style="color:#64748b;font-size:10px">Rekonsiliasi Pajak Pemasukan</div></div>
   </div>
   <div>
@@ -324,7 +325,7 @@ td{padding:6px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}
           <p className="text-sm text-gray-400 mt-0.5">Breakdown pemasukan kas per tahun pajak — {year}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          <select value={year} onChange={e => { const y = Number(e.target.value); setYear(y); try { sessionStorage.setItem('financebub_active_year', String(y)); window.dispatchEvent(new CustomEvent('financebub-year-change', { detail: y })) } catch {} }} className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#1B8A7A]">
+          <select value={year} onChange={e => { const y = Number(e.target.value); setYear(y); persistActiveYear(y) }} className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#1B8A7A]">
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <select value={monthFilter} onChange={e => setMonthFilter(Number(e.target.value))} className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#1B8A7A]">

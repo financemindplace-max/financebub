@@ -5,7 +5,10 @@ import { fetchMonth, saveMonth, type FinanceTransaction } from '@/lib/finance'
 import type { Doc } from '@/types/document'
 
 const USER_ID = 'financebub-main'
-const DEFAULT_YEARS = [2024, 2025, 2026, 2027, 2028]
+const DEFAULT_YEARS = Array.from(
+  { length: new Date().getFullYear() + 3 - 2020 + 1 },
+  (_, index) => 2020 + index,
+).sort((a, b) => b - a)
 
 export interface InvoicePaymentLog {
   id: string
