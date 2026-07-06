@@ -31,6 +31,8 @@ import {
   normalizeCompanies,
   normalizeCompany,
   normalizeSignatory,
+  type Signer,
+  normalizeSigners,
 } from '@/lib/company-profile'
 
 const input = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-[#1B8A7A] focus:ring-1 focus:ring-[#1B8A7A]/10 bg-white'
@@ -97,6 +99,7 @@ export default function ProfilPerusahaanPage() {
   const [defaultCompanyId, setDefaultCompanyId] = useState(DEFAULT_COMPANY.id)
   const [signatory, setSignatory] = useState<SignatoryProfile>(DEFAULT_SIGNATORY)
   const [activeSignatureTab, setActiveSignatureTab] = useState<'director' | 'hrd'>('director')
+  const [signers, setSigners] = useState<Signer[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -117,6 +120,7 @@ export default function ProfilPerusahaanPage() {
       setDefaultCompanyId(activeId)
       setSelectedCompanyId(activeId)
       setSignatory(normalizeSignatory(global))
+      setSigners(normalizeSigners(global))
       setAppIdentity({
         appName: (global as any).appName || 'FinanceBub',
         appSubtitle: (global as any).appSubtitle || 'All Project',
@@ -306,6 +310,9 @@ export default function ProfilPerusahaanPage() {
         hrdName: signatory.hrdName,
         hrdTitle: signatory.hrdTitle,
         hrdSignatureData: signatory.hrdSignatureData,
+
+        // Daftar Penandatangan
+        signers: signers.map(s => ({ id: s.id, name: s.name, title: s.title, signatureData: s.signatureData })),
 
         // Identitas Aplikasi
         appName: appIdentity.appName,
@@ -533,6 +540,39 @@ export default function ProfilPerusahaanPage() {
               </div>
 
               <div className="col-span-2"><Field label="Tagline / Closing Dokumen"><input className={input} value={signatory.tagline || ''} onChange={e => updateSignatory('tagline', e.target.value)} /></Field></div>
+            </div>
+          </section>
+
+          {/* ── Daftar Penandatangan ── */}
+          <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <UserRound className="w-5 h-5 text-[#1B8A7A]" />
+                <h2 className="text-sm font-semibold text-gray-900">Daftar Penandatangan</h2>
+              </div>
+              <button onClick={addSigner} className="px-3 py-1.5 bg-[#1B8A7A] hover:bg-[#0F6E56] text-white text-xs font-semibold rounded-lg">+ Tambah</button>
+            </div>
+            <p className="text-[11px] text-gray-400 leading-relaxed mb-4">Daftar orang yang bisa dipilih sebagai penandatangan di Quotation dan Invoice.</p>
+            {signers.length === 0 && <div className="text-xs text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">Belum ada penandatangan. Klik + Tambah untuk menambahkan.</div>}
+            <div className="space-y-3">
+              {signers.map(signer => (
+                <div key={signer.id} className="rounded-xl border border-gray-100 p-4 bg-gray-50/60">
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <Field label="Nama"><input className={input} value={signer.name} onChange={e => updateSigner(signer.id, 'name', e.target.value)} /></Field>
+                    <Field label="Jabatan"><input className={input} value={signer.title} onChange={e => updateSigner(signer.id, 'title', e.target.value)} /></Field>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 border border-dashed border-gray-200 rounded-lg p-2 bg-white text-center min-h-[48px] flex items-center justify-center">
+                      {signer.signatureData ? <img src={signer.signatureData} alt="TTD" className="max-h-10 object-contain" /> : <span className="text-[11px] text-gray-400">Belum ada TTD</span>}
+                    </div>
+                    <label className="px-3 py-2 bg-[#1B8A7A] text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-[#0F6E56]">
+                      Upload
+                      <input type="file" accept="image/*" onChange={e => handleSignerImage(e, signer.id)} className="hidden" />
+                    </label>
+                    <button onClick={() => removeSigner(signer.id)} className="px-2 py-2 border border-gray-200 rounded-lg text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         </div>
