@@ -36,6 +36,13 @@ export type SignatoryProfile = {
   tagline: string
 }
 
+export type Signer = {
+  id: string
+  name: string
+  title: string
+  signatureData: string
+}
+
 export const DEFAULT_COMPANY_ACCOUNT: CompanyPaymentAccount = {
   id: 'account-main',
   bank: 'Bank Central Asia (BCA)',
@@ -223,4 +230,23 @@ export function getSelectedAccountFromFields(company: CompanyProfile | null | un
   if (!company) return null
   const selectedId = asString(fields.paymentAccountId)
   return getAccountById(company, selectedId)
+}
+
+export function normalizeSigners(global: Record<string, any>): Signer[] {
+  if (Array.isArray(global.signers) && global.signers.length > 0) {
+    return global.signers.map((s: any) => ({
+      id: s.id || makeId('signer'),
+      name: String(s.name || ''),
+      title: String(s.title || ''),
+      signatureData: String(s.signatureData || ''),
+    }))
+  }
+  // Migrate from legacy director data
+  const name = global.directorName || global['s-name'] || ''
+  const title = global.directorTitle || global['s-title'] || ''
+  const sig = global.directorSignatureData || global.sigData || ''
+  if (name || title) {
+    return [{ id: 'signer-director', name, title, signatureData: sig }]
+  }
+  return []
 }

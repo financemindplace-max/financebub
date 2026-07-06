@@ -14,7 +14,9 @@ import {
   getDefaultCompanyId,
   normalizeCompanies,
   normalizeSignatory,
+  normalizeSigners,
   type CompanyProfile,
+  type Signer,
 } from '@/lib/company-profile'
 import { downloadLegacyDocumentPdf, prepareLegacyDocumentData } from '@/lib/legacy-document-pdf'
 import { buildNextNumberUpdates, formatDocumentNumber, getDocumentNumberConfig, isAutoDocumentNumber, parseDocumentNumber } from '@/lib/document-numbering'
@@ -83,6 +85,7 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
   const [showExtra2, setShowExtra2] = useState(() => Boolean((doc as any)?.showExtra2))
   const [logoData, setLogoData] = useState<string | null>(doc?.logoData || null)
   const [sigData, setSigData] = useState<string | null>(doc?.sigData || null)
+  const [signers, setSigners] = useState<Signer[]>([])
   const [sigNW, setSigNW] = useState(doc?.sigNW || 0)
   const [sigNH, setSigNH] = useState(doc?.sigNH || 0)
   const [saving, setSaving] = useState(false)
@@ -161,6 +164,7 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
       setGlobalConfig(global as Record<string, unknown>)
       const loadedCompanies = normalizeCompanies(global as Record<string, any>)
       const signatory = normalizeSignatory(global as Record<string, any>)
+      setSigners(normalizeSigners(global as Record<string, any>))
       const defaultCompanyId = getDefaultCompanyId(global as Record<string, any>, loadedCompanies)
       const initialCompanyId = doc?.fields?.companyProfileId || defaultCompanyId
       const initialCompany = getCompanyById(loadedCompanies, initialCompanyId)
@@ -747,6 +751,25 @@ export default function QuotationForm({ doc, year, onSave, onBack, onPreview, on
 
         {/* TTD & Penutup */}
         <Card title="TTD & Penutup">
+          {signers.length > 0 && (
+            <Field label="Pilih Penandatangan">
+              <select
+                className={input}
+                value=""
+                onChange={e => {
+                  const s = signers.find(s => s.id === e.target.value)
+                  if (s) {
+                    markDirty()
+                    setFields(f => ({ ...f, 's-name': s.name, 's-title': s.title }))
+                    if (s.signatureData) setSigData(s.signatureData)
+                  }
+                }}
+              >
+                <option value="">— Pilih untuk mengisi otomatis —</option>
+                {signers.map(s => <option key={s.id} value={s.id}>{s.name} — {s.title}</option>)}
+              </select>
+            </Field>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Nama">
               <input value={fields['s-name'] || ''} onChange={e => setField('s-name', e.target.value)} className={input} />
