@@ -384,7 +384,7 @@ function getImageSize(dataUrl: string): Promise<{ width: number; height: number 
   })
 }
 
-export async function downloadLegacyDocumentPdf(data: LegacyDocumentData): Promise<void> {
+export async function downloadLegacyDocumentPdf(data: LegacyDocumentData, opts?: { skipSignature?: boolean }): Promise<void> {
   if (!data.items.length) {
     alert('Tambahkan minimal 1 item!')
     return
@@ -708,7 +708,7 @@ export async function downloadLegacyDocumentPdf(data: LegacyDocumentData): Promi
   doc.text('Yours Sincerely,', signatureCenterX, signatureStartY, { align: 'center' })
   const signatureY = signatureStartY + 5
   let signatureHeight = 14
-  if (data.signatureData) {
+  if (data.signatureData && !opts?.skipSignature) {
     try {
       const maxW = 55
       const maxH = 25
@@ -760,5 +760,5 @@ export async function downloadLegacyDocumentPdf(data: LegacyDocumentData): Promi
     doc.text(socials.join('   |   '), PW / 2, y, { align: 'center' })
   }
 
-  doc.save(`${data.fileName}.pdf`)
+  doc.save(`${data.fileName}${opts?.skipSignature ? ' (TTD Basah)' : ''}.pdf`)
 }

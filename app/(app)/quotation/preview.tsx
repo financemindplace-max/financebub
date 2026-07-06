@@ -19,6 +19,7 @@ interface Props {
 export default function QuotationPreview({ doc, onBack, onEdit }: Props) {
   const [global, setGlobal] = useState<Record<string, unknown>>({})
   const [downloading, setDownloading] = useState(false)
+  const [downloadingWet, setDownloadingWet] = useState(false)
 
   useEffect(() => {
     fetchGlobal().then(data => setGlobal((data || {}) as Record<string, unknown>))
@@ -35,6 +36,17 @@ export default function QuotationPreview({ doc, onBack, onEdit }: Props) {
       alert(error instanceof Error ? error.message : 'Gagal membuat PDF')
     } finally {
       setDownloading(false)
+    }
+  }
+
+  const handleDownloadWet = async () => {
+    setDownloadingWet(true)
+    try {
+      await downloadLegacyDocumentPdf(previewData, { skipSignature: true })
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Gagal membuat PDF')
+    } finally {
+      setDownloadingWet(false)
     }
   }
 
@@ -62,6 +74,15 @@ export default function QuotationPreview({ doc, onBack, onEdit }: Props) {
           >
             <Download className="w-3.5 h-3.5" />
             {downloading ? 'Membuat PDF...' : 'Download PDF'}
+          </button>
+          <button
+            onClick={handleDownloadWet}
+            disabled={downloadingWet}
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-gray-600 hover:bg-gray-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg"
+            title={`${previewData.fileName} (TTD Basah).pdf`}
+          >
+            <Download className="w-3.5 h-3.5" />
+            {downloadingWet ? 'Membuat PDF...' : 'TTD Basah'}
           </button>
         </div>
       </div>
