@@ -157,6 +157,30 @@ export default function ProfilPerusahaanPage() {
     setSignatory(current => ({ ...current, [key]: value }))
   }
 
+  const addSigner = () => {
+    setSaved(false)
+    setSigners(prev => [...prev, { id: makeId('signer'), name: '', title: '', signatureData: '' }])
+  }
+  const updateSigner = (id: string, key: keyof Signer, value: string) => {
+    setSaved(false)
+    setSigners(prev => prev.map(s => s.id === id ? { ...s, [key]: value } : s))
+  }
+  const removeSigner = (id: string) => {
+    setSaved(false)
+    setSigners(prev => prev.filter(s => s.id !== id))
+  }
+  const handleSignerImage = async (event: ChangeEvent<HTMLInputElement>, signerId: string) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (file.size > 850_000) {
+      alert('Ukuran file terlalu besar. Usahakan di bawah 850KB.')
+      return
+    }
+    const dataUrl = await readFileAsDataUrl(file)
+    updateSigner(signerId, 'signatureData', dataUrl)
+  }
+
   const updateAccount = (accountId: string, key: keyof CompanyPaymentAccount, value: string) => {
     setSaved(false)
     setCompanies(current => current.map(company => {
