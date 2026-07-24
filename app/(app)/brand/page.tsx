@@ -692,142 +692,222 @@ Transaksi bank tetap ada. Hanya link ke dokumen ini yang dilepas.`)) return
     }
   }, [akumulasi, akumPath])
 
-  const downloadBrandPdf = useCallback(() => {
+  const [pdfLoading, setPdfLoading] = useState<'standard' | 'links' | null>(null)
+
+  const downloadBrandPdf = useCallback((includeLinks = false) => {
+    if (pdfLoading) return
+
     const reportRows = rows
     if (!reportRows.length) {
       alert('Tidak ada data untuk brand ini')
       return
     }
 
-    const bTheme = reportRows.find(r => r.theme)?.theme || brand.theme || '#2D5A2D'
-    const pdfSummary = calculateRowsSummary(reportRows)
-    const kontrakPdf = pdfSummary.contract
-    const bayarPdf = pdfSummary.paid
-    const sisaPdf = pdfSummary.remaining
-    const projectCountPdf = new Set(reportRows.filter(row => !row.isExtra).map(docKey)).size
+    setPdfLoading(includeLinks ? 'links' : 'standard')
 
-    const escapeHtml = (value: unknown) => String(value || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
+    try {
+      const bTheme = reportRows.find(r => r.theme)?.theme || brand.theme || '#2D5A2D'
 
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
-    const dateLabel = (value: string) => {
-      if (!value) return '—'
-      const parts = value.split('-')
-      if (parts.length < 3) return value
-      return `${parseInt(parts[2], 10)} ${monthNames[Number(parts[1]) - 1] || ''} ${parts[0]}`
-    }
-    const money = (value: number) => value ? Math.round(value).toLocaleString('id-ID') : '—'
-    const lightenHex = (hexValue: string, ratio: number) => {
-      let hex = (hexValue || '#2D5A2D').replace('#', '')
-      if (hex.length === 3) hex = hex.split('').map(c => c + c).join('')
-      const r = parseInt(hex.slice(0, 2), 16)
-      const g = parseInt(hex.slice(2, 4), 16)
-      const b = parseInt(hex.slice(4, 6), 16)
-      const mix = (v: number) => Math.round(v + (255 - v) * ratio).toString(16).padStart(2, '0')
-      return `#${mix(r)}${mix(g)}${mix(b)}`
-    }
-    const statusHtml = () => {
-      if (bayarPdf === 0 && kontrakPdf > 0) {
-        return '<span class="s-k">KURANG BAYAR</span><span style="font-size:11px;color:#555;margin-left:8px">Belum ada pembayaran</span>'
+      // Buat index sekali. Sebelumnya setiap project melakukan filter ulang ke
+      // seluruh reportRows, yang makin lambat ketika data pembayaran bertambah.
+      const mainGroups = new Map<string, AkumRow[]>()
+      const extraRowsByParent = new Map<string, AkumRow[]>()
+      for (const row of reportRows) {
+        if (row.isExtra) {
+          if (!row.parentRid) continue
+          const extras = extraRowsByParent.get(row.parentRid) || []
+          extras.push(row)
+          extraRowsByParent.set(row.parentRid, extras)
+          continue
+        }
+        const key = docKey(row)
+        const group = mainGroups.get(key) || []
+        group.push(row)
+        mainGroups.set(key, group)
       }
-      if (Math.abs(sisaPdf) < 1) return '<span class="s-l">✓ LUNAS</span>'
-      if (sisaPdf > 0) return `<span class="s-k">KURANG BAYAR</span><span style="font-size:11px;color:#555;margin-left:8px">Sisa: Rp ${Math.round(sisaPdf).toLocaleString('id-ID')}</span>`
-      return `<span class="s-lb">LEBIH BAYAR</span><span style="font-size:11px;color:#555;margin-left:8px">Lebih: Rp ${Math.round(-sisaPdf).toLocaleString('id-ID')}</span>`
-    }
-    const invoiceBadge = (value: string) => {
-      if (!value) return '<span style="color:#6b7280;font-size:9px">—</span>'
-      const cls = value === 'Lunas' ? 's-l' : value === 'Terbit' ? 's-lb' : value === 'Belum Lunas' || value === 'Overdue' ? 's-k' : ''
-      if (cls) return `<span class="${cls}" style="font-size:9px;padding:2px 8px">${escapeHtml(value)}</span>`
-      return `<span style="background:#f3f4f6;color:#374151;padding:2px 8px;border-radius:4px;font-size:9px">${escapeHtml(value)}</span>`
-    }
 
-    const grouped: Record<string, AkumRow[]> = {}
-    reportRows.filter(r => !r.isExtra).forEach(r => {
-      const key = `${r.noQuo || '__'}|${r.noInv || '__'}`
-      if (!grouped[key]) grouped[key] = []
-      grouped[key].push(r)
-    })
+      let kontrakPdf = 0
+      let bayarPdf = 0
+      for (const group of mainGroups.values()) {
+        const first = group[0]
+        kontrakPdf += Math.max(0, pN(first.totalAmt))
+        const resolved = resolvePaymentRows(first, extraRowsByParent.get(first.rid) || [])
+        bayarPdf += uniquePaymentRows([resolved.paymentRow, ...resolved.extraRows])
+          .reduce((sum, row) => sum + Math.max(0, pN(row.nom)), 0)
+      }
+      const sisaPdf = kontrakPdf - bayarPdf
+      const projectCountPdf = mainGroups.size
 
-    const rowHtml = Object.values(grouped).map(group => {
-      const first = group[0]
-      const allExtraRows = reportRows.filter(r => r.isExtra && r.parentRid === first.rid)
-      const { paymentRow: payment, extraRows: remainingExtraRows } = resolvePaymentRows(first, allExtraRows)
-      const itemHtml = group.map((r, i) => {
-        const parts = []
-        if (r.item) parts.push(`<b>${escapeHtml(r.item)}</b>`)
-        if (r.sow) parts.push(`<div style="font-size:9px;color:#6b7280;margin-top:1px">${escapeHtml(r.sow).replace(/\n/g, '<br>')}</div>`)
-        return `<div ${i > 0 ? 'style="border-top:1px dashed #e5e7eb;padding-top:3px;margin-top:3px"' : ''}>${parts.join('')}</div>`
-      }).join('')
-      const nomVal = pN(payment?.nom || '')
-      const td = 'padding:6px 10px;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;vertical-align:middle;'
-      const tdTop = 'padding:6px 10px;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;vertical-align:top;'
-      const main = `<tr style="background:#fff">
-        <td style="${td}"><b>${escapeHtml(first.client)}</b>${first.due ? `<div style="font-size:9px;color:#6b7280">Due: ${dateLabel(first.due)}</div>` : ''}</td>
-        <td style="${td}"><span style="background:${first.theme || bTheme};color:#fff;padding:2px 8px;border-radius:99px;font-size:9px;font-weight:600;display:inline-block;white-space:nowrap">${escapeHtml(first.brand)}</span></td>
-        <td style="${tdTop}">${itemHtml}</td>
-        <td style="${td}font-size:9px;color:#6b7280">${escapeHtml(first.noQuo || '—')}</td>
-        <td style="${td}font-size:9px;color:#6b7280">${escapeHtml(first.noInv || '—')}</td>
-        <td style="${td}font-weight:600;color:#1B8A7A;white-space:nowrap">${money(first.totalAmt)}</td>
-        <td style="${td}">${invoiceBadge(first.statusInv)}</td>
-        <td style="${td}font-size:9px;color:#444">${dateLabel(payment?.tgl || '')}</td>
-        <td style="${td}font-size:9px;color:#444">${escapeHtml(payment?.ket || '')}</td>
-        <td style="${td}font-weight:600;color:#1B8A7A;white-space:nowrap">${nomVal > 0 ? money(nomVal) : '—'}</td>
-        <td style="${td}font-size:9px;color:#444;border-right:none">${escapeHtml(payment?.rek || '')}</td>
-      </tr>`
-      const extras = remainingExtraRows.map(er => {
-        const enom = pN(er.nom)
-        return `<tr style="background:#F0FDF4;border-left:3px solid #1B8A7A">
-          <td colspan="7" style="background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px;color:#6b7280;font-size:9px">↳ Cicilan tambahan</td>
-          <td style="font-size:9px;color:#444;background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px">${dateLabel(er.tgl)}</td>
-          <td style="font-size:9px;color:#444;background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px">${escapeHtml(er.ket)}</td>
-          <td style="font-weight:600;color:#1B8A7A;white-space:nowrap;background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px">${enom > 0 ? money(enom) : '—'}</td>
-          <td style="font-size:9px;color:#444;background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px">${escapeHtml(er.rek)}</td>
+      const escapeHtml = (value: unknown) => String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;')
+
+      const safeUrl = (value: unknown) => {
+        const raw = String(value || '').trim()
+        if (!raw) return ''
+        try {
+          const parsed = new URL(raw)
+          return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : ''
+        } catch {
+          return ''
+        }
+      }
+
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+      const dateLabel = (value: string) => {
+        if (!value) return '—'
+        const parts = value.split('-')
+        if (parts.length < 3) return value
+        return `${parseInt(parts[2], 10)} ${monthNames[Number(parts[1]) - 1] || ''} ${parts[0]}`
+      }
+      const money = (value: number) => value ? Math.round(value).toLocaleString('id-ID') : '—'
+      const lightenHex = (hexValue: string, ratio: number) => {
+        let hex = (hexValue || '#2D5A2D').replace('#', '')
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('')
+        const r = parseInt(hex.slice(0, 2), 16)
+        const g = parseInt(hex.slice(2, 4), 16)
+        const b = parseInt(hex.slice(4, 6), 16)
+        const mix = (v: number) => Math.round(v + (255 - v) * ratio).toString(16).padStart(2, '0')
+        return `#${mix(r)}${mix(g)}${mix(b)}`
+      }
+      const statusHtml = () => {
+        if (bayarPdf === 0 && kontrakPdf > 0) {
+          return '<span class="s-k">KURANG BAYAR</span><span style="font-size:11px;color:#555;margin-left:8px">Belum ada pembayaran</span>'
+        }
+        if (Math.abs(sisaPdf) < 1) return '<span class="s-l">✓ LUNAS</span>'
+        if (sisaPdf > 0) return `<span class="s-k">KURANG BAYAR</span><span style="font-size:11px;color:#555;margin-left:8px">Sisa: Rp ${Math.round(sisaPdf).toLocaleString('id-ID')}</span>`
+        return `<span class="s-lb">LEBIH BAYAR</span><span style="font-size:11px;color:#555;margin-left:8px">Lebih: Rp ${Math.round(-sisaPdf).toLocaleString('id-ID')}</span>`
+      }
+      const invoiceBadge = (value: string) => {
+        if (!value) return '<span style="color:#6b7280;font-size:9px">—</span>'
+        const cls = value === 'Lunas' ? 's-l' : value === 'Terbit' ? 's-lb' : value === 'Belum Lunas' || value === 'Overdue' ? 's-k' : ''
+        if (cls) return `<span class="${cls}" style="font-size:9px;padding:2px 8px">${escapeHtml(value)}</span>`
+        return `<span style="background:#f3f4f6;color:#374151;padding:2px 8px;border-radius:4px;font-size:9px">${escapeHtml(value)}</span>`
+      }
+      const linksHtml = (group: AkumRow[]) => {
+        if (!includeLinks) return ''
+        const seen = new Set<string>()
+        const links = group.flatMap(row => row.videoLinks || []).filter(link => {
+          const url = safeUrl(link.url)
+          if (!url) return false
+          const key = `${String(link.platform || '').trim()}|${url}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        if (!links.length) return '<div class="deliverables"><div class="deliverable-title">Link deliverable</div><span class="no-link">Belum ada link</span></div>'
+        return `<div class="deliverables"><div class="deliverable-title">Link deliverable</div>${links.map(link => {
+          const url = safeUrl(link.url)
+          const label = String(link.platform || '').trim() || 'Link'
+          return `<div class="deliverable-row"><b>${escapeHtml(label)}:</b> <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a></div>`
+        }).join('')}</div>`
+      }
+
+      const rowHtml = Array.from(mainGroups.values()).map(group => {
+        const first = group[0]
+        const { paymentRow: payment, extraRows: remainingExtraRows } = resolvePaymentRows(first, extraRowsByParent.get(first.rid) || [])
+        const itemHtml = group.map((r, i) => {
+          const parts = []
+          if (r.item) parts.push(`<b>${escapeHtml(r.item)}</b>`)
+          if (r.sow) parts.push(`<div style="font-size:9px;color:#6b7280;margin-top:1px">${escapeHtml(r.sow).replace(/\n/g, '<br>')}</div>`)
+          return `<div ${i > 0 ? 'style="border-top:1px dashed #e5e7eb;padding-top:3px;margin-top:3px"' : ''}>${parts.join('')}</div>`
+        }).join('') + linksHtml(group)
+        const nomVal = pN(payment?.nom || '')
+        const td = 'padding:6px 10px;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;vertical-align:middle;'
+        const tdTop = 'padding:6px 10px;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;vertical-align:top;'
+        const main = `<tr style="background:#fff;break-inside:avoid;page-break-inside:avoid">
+          <td style="${td}"><b>${escapeHtml(first.client)}</b>${first.due ? `<div style="font-size:9px;color:#6b7280">Due: ${dateLabel(first.due)}</div>` : ''}</td>
+          <td style="${td}"><span style="background:${first.theme || bTheme};color:#fff;padding:2px 8px;border-radius:99px;font-size:9px;font-weight:600;display:inline-block;white-space:nowrap">${escapeHtml(first.brand)}</span></td>
+          <td style="${tdTop}">${itemHtml}</td>
+          <td style="${td}font-size:9px;color:#6b7280">${escapeHtml(first.noQuo || '—')}</td>
+          <td style="${td}font-size:9px;color:#6b7280">${escapeHtml(first.noInv || '—')}</td>
+          <td style="${td}font-weight:600;color:#1B8A7A;white-space:nowrap">${money(first.totalAmt)}</td>
+          <td style="${td}">${invoiceBadge(first.statusInv)}</td>
+          <td style="${td}font-size:9px;color:#444">${dateLabel(payment?.tgl || '')}</td>
+          <td style="${td}font-size:9px;color:#444">${escapeHtml(payment?.ket || '')}</td>
+          <td style="${td}font-weight:600;color:#1B8A7A;white-space:nowrap">${nomVal > 0 ? money(nomVal) : '—'}</td>
+          <td style="${td}font-size:9px;color:#444;border-right:none">${escapeHtml(payment?.rek || '')}</td>
         </tr>`
+        const extras = remainingExtraRows.map(er => {
+          const enom = pN(er.nom)
+          return `<tr style="background:#F0FDF4;border-left:3px solid #1B8A7A;break-inside:avoid;page-break-inside:avoid">
+            <td colspan="7" style="background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px;color:#6b7280;font-size:9px">↳ Cicilan tambahan</td>
+            <td style="font-size:9px;color:#444;background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px">${dateLabel(er.tgl)}</td>
+            <td style="font-size:9px;color:#444;background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px">${escapeHtml(er.ket)}</td>
+            <td style="font-weight:600;color:#1B8A7A;white-space:nowrap;background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px">${enom > 0 ? money(enom) : '—'}</td>
+            <td style="font-size:9px;color:#444;background:#F0FDF4;border-bottom:1px solid #e5e7eb;padding:6px 10px">${escapeHtml(er.rek)}</td>
+          </tr>`
+        }).join('')
+        return main + extras
       }).join('')
-      return main + extras
-    }).join('')
 
-    const today = new Date()
-    const todayLabel = `${today.getDate()} ${monthNames[today.getMonth()]} ${today.getFullYear()}`
-    const safeTitle = `Status Brand ${brand.name} ${year}`.replace(/[\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim()
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHtml(safeTitle)}</title>
-      <style>
-        @page{size:A4 landscape;margin:12mm 10mm}
-        *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
-        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:11px;color:#1a1a1a;background:#fff}
-        .aw{margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}
-        .ah{color:#fff;font-size:12px;font-weight:500;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:6px;background:${bTheme}!important}
-        .at{width:100%;border-collapse:collapse;font-size:10px}.at th{color:#fff;padding:6px 10px;text-align:left;font-size:9px;font-weight:600;white-space:nowrap;border-right:1px solid rgba(255,255,255,.1)}
-        .at th:last-child{border-right:none}.at td{padding:6px 10px;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;vertical-align:middle}.at td:last-child{border-right:none}
-        .sr td{background:#EEF5E8!important;font-weight:600;color:#2D5A2D;border-top:2px solid #4A7C4A}.str td{background:#EEF5E8!important}.sl{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#4A7C4A}
-        .s-l{background:#2E6B10;color:#fff;border-radius:5px;padding:2px 10px;font-size:10px;font-weight:600;display:inline-block}.s-k{background:#B91C1C;color:#fff;border-radius:5px;padding:2px 10px;font-size:10px;font-weight:600;display:inline-block}.s-lb{background:#1D4ED8;color:#fff;border-radius:5px;padding:2px 10px;font-size:10px;font-weight:600;display:inline-block}
-        .footer{margin-top:6px;font-size:8px;color:#888;display:flex;justify-content:space-between}
-      </style></head><body>
-      <div class="aw"><div class="ah"><span>📄 ${escapeHtml(brand.name)}</span><span style="font-size:11px;opacity:.85">${projectCountPdf} project · Kontrak Rp ${money(kontrakPdf)}</span></div>
-      <table class="at"><thead><tr style="background:${lightenHex(bTheme, 0.15)}!important"><th>Klien</th><th>Brand</th><th>Item / SOW</th><th>No. Quotation</th><th>No. Invoice</th><th>Total</th><th>Status</th><th>Tgl Pembayaran</th><th>Keterangan</th><th>Nominal Pembayaran</th><th>Rekening</th></tr></thead><tbody>
-      ${rowHtml}
-      <tr class="sr"><td colspan="5" style="text-align:right;padding-right:16px"><span class="sl">Jumlah Kontrak</span></td><td><span style="font-size:9px;color:#4A7C4A">Rp </span><b>${money(kontrakPdf)}</b></td><td colspan="5"></td></tr>
-      <tr class="sr"><td colspan="5" style="text-align:right;padding-right:16px"><span class="sl">Jumlah Pembayaran Masuk</span></td><td><span style="font-size:9px;color:#4A7C4A">Rp </span><b>${money(bayarPdf)}</b></td><td colspan="5"></td></tr>
-      <tr class="sr"><td colspan="5" style="text-align:right;padding-right:16px"><span class="sl">Kurang / Sisa Pembayaran</span></td><td><span style="font-size:9px;color:#4A7C4A">Rp </span><b>${money(Math.abs(sisaPdf))}</b></td><td colspan="5"></td></tr>
-      <tr class="str"><td colspan="5" style="text-align:right;padding-right:16px;background:#EEF5E8;border-top:2px solid #4A7C4A"><span class="sl">Status Pembayaran</span></td><td colspan="6" style="background:#EEF5E8;border-top:2px solid #4A7C4A">${statusHtml()}</td></tr>
-      </tbody></table></div><div class="footer"><span>FinanceBub — Status Brand: ${escapeHtml(brand.name)} — Tahun ${year}</span><span>Dicetak: ${todayLabel}</span></div>
-      </body></html>`
+      const today = new Date()
+      const todayLabel = `${today.getDate()} ${monthNames[today.getMonth()]} ${today.getFullYear()}`
+      const titleSuffix = includeLinks ? ' - Dengan Link' : ''
+      const safeTitle = `Status Brand ${brand.name} ${year}${titleSuffix}`.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim()
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHtml(safeTitle)}</title>
+        <style>
+          @page{size:A4 landscape;margin:12mm 10mm}
+          *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
+          body{font-family:Arial,"Segoe UI",sans-serif;font-size:11px;color:#1a1a1a;background:#fff}
+          .aw{margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}
+          .ah{color:#fff;font-size:12px;font-weight:500;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:6px;background:${bTheme}!important}
+          .at{width:100%;border-collapse:collapse;font-size:10px;table-layout:auto}.at thead{display:table-header-group}.at tfoot{display:table-footer-group}.at tr{break-inside:avoid;page-break-inside:avoid}
+          .at th{color:#fff;padding:6px 10px;text-align:left;font-size:9px;font-weight:600;white-space:nowrap;border-right:1px solid rgba(255,255,255,.1)}
+          .at th:last-child{border-right:none}.at td{padding:6px 10px;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;vertical-align:middle}.at td:last-child{border-right:none}
+          .sr td{background:#EEF5E8!important;font-weight:600;color:#2D5A2D;border-top:2px solid #4A7C4A}.str td{background:#EEF5E8!important}.sl{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#4A7C4A}
+          .s-l{background:#2E6B10;color:#fff;border-radius:5px;padding:2px 10px;font-size:10px;font-weight:600;display:inline-block}.s-k{background:#B91C1C;color:#fff;border-radius:5px;padding:2px 10px;font-size:10px;font-weight:600;display:inline-block}.s-lb{background:#1D4ED8;color:#fff;border-radius:5px;padding:2px 10px;font-size:10px;font-weight:600;display:inline-block}
+          .deliverables{margin-top:5px;padding-top:4px;border-top:1px dashed #cbd5e1;font-size:8px;line-height:1.35}.deliverable-title{font-weight:700;color:#0f766e;margin-bottom:2px}.deliverable-row{overflow-wrap:anywhere;margin:1px 0}.deliverable-row a{color:#1d4ed8;text-decoration:underline}.no-link{color:#9ca3af;font-style:italic}
+          .footer{margin-top:6px;font-size:8px;color:#888;display:flex;justify-content:space-between}
+        </style></head><body>
+        <div class="aw"><div class="ah"><span>📄 ${escapeHtml(brand.name)}${includeLinks ? ' · LINK DELIVERABLE' : ''}</span><span style="font-size:11px;opacity:.85">${projectCountPdf} project · Kontrak Rp ${money(kontrakPdf)}</span></div>
+        <table class="at"><thead><tr style="background:${lightenHex(bTheme, 0.15)}!important"><th>Klien</th><th>Brand</th><th>Item / SOW${includeLinks ? ' / Link' : ''}</th><th>No. Quotation</th><th>No. Invoice</th><th>Total</th><th>Status</th><th>Tgl Pembayaran</th><th>Keterangan</th><th>Nominal Pembayaran</th><th>Rekening</th></tr></thead><tbody>
+        ${rowHtml}
+        <tr class="sr"><td colspan="5" style="text-align:right;padding-right:16px"><span class="sl">Jumlah Kontrak</span></td><td><span style="font-size:9px;color:#4A7C4A">Rp </span><b>${money(kontrakPdf)}</b></td><td colspan="5"></td></tr>
+        <tr class="sr"><td colspan="5" style="text-align:right;padding-right:16px"><span class="sl">Jumlah Pembayaran Masuk</span></td><td><span style="font-size:9px;color:#4A7C4A">Rp </span><b>${money(bayarPdf)}</b></td><td colspan="5"></td></tr>
+        <tr class="sr"><td colspan="5" style="text-align:right;padding-right:16px"><span class="sl">Kurang / Sisa Pembayaran</span></td><td><span style="font-size:9px;color:#4A7C4A">Rp </span><b>${money(Math.abs(sisaPdf))}</b></td><td colspan="5"></td></tr>
+        <tr class="str"><td colspan="5" style="text-align:right;padding-right:16px;background:#EEF5E8;border-top:2px solid #4A7C4A"><span class="sl">Status Pembayaran</span></td><td colspan="6" style="background:#EEF5E8;border-top:2px solid #4A7C4A">${statusHtml()}</td></tr>
+        </tbody></table></div><div class="footer"><span>FinanceBub — Status Brand: ${escapeHtml(brand.name)} — Tahun ${year}${includeLinks ? ' — Dengan Link Deliverable' : ''}</span><span>Dicetak: ${todayLabel}</span></div>
+        <script>window.addEventListener('afterprint',function(){window.close()});</script>
+        </body></html>`
 
-    const printWindow = window.open('', '_blank', 'width=1280,height=800')
-    if (!printWindow) {
-      alert('Popup diblokir browser. Izinkan popup lalu coba lagi.')
-      return
+      const printWindow = window.open('', '_blank', 'width=1280,height=800')
+      if (!printWindow) {
+        setPdfLoading(null)
+        alert('Popup diblokir browser. Izinkan popup lalu coba lagi.')
+        return
+      }
+
+      printWindow.document.open()
+      printWindow.document.write(html)
+      printWindow.document.close()
+
+      // Tidak menunggu window.onload yang dapat tertahan oleh print engine Chrome.
+      // Dua frame memberi browser waktu menyusun layout, lalu print dipanggil.
+      const startPrint = () => {
+        printWindow.requestAnimationFrame(() => {
+          printWindow.requestAnimationFrame(() => {
+            window.setTimeout(() => {
+              printWindow.focus()
+              printWindow.print()
+              setPdfLoading(null)
+            }, 80)
+          })
+        })
+      }
+
+      if (printWindow.document.readyState === 'complete') startPrint()
+      else window.setTimeout(startPrint, 40)
+    } catch (error) {
+      console.error('Gagal membuat PDF Status Brand:', error)
+      setPdfLoading(null)
+      alert('Gagal menyiapkan PDF. Silakan coba lagi.')
     }
-    printWindow.document.write(html)
-    printWindow.document.close()
-    printWindow.onload = () => {
-      printWindow.focus()
-      printWindow.print()
-    }
-  }, [rows, brand, year])
+  }, [rows, brand, year, pdfLoading])
+
 
   return (
     <div>
@@ -840,8 +920,19 @@ Transaksi bank tetap ada. Hanya link ke dokumen ini yang dilepas.`)) return
           <h1 className="text-xl font-semibold text-gray-900">📄 {brand.name} <span className="text-gray-400 font-normal text-base">{year}</span></h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={downloadBrandPdf} className="flex items-center gap-1.5 text-sm bg-[#1B8A7A] text-white hover:bg-[#0F6E56] border border-[#1B8A7A] rounded-lg px-3 py-1.5 font-medium">
-            <Download size={13} /> Download PDF
+          <button
+            onClick={() => downloadBrandPdf(false)}
+            disabled={pdfLoading !== null}
+            className="flex items-center gap-1.5 text-sm bg-[#1B8A7A] text-white hover:bg-[#0F6E56] disabled:opacity-60 disabled:cursor-wait border border-[#1B8A7A] rounded-lg px-3 py-1.5 font-medium"
+          >
+            <Download size={13} /> {pdfLoading === 'standard' ? 'Menyiapkan PDF…' : 'Download PDF'}
+          </button>
+          <button
+            onClick={() => downloadBrandPdf(true)}
+            disabled={pdfLoading !== null}
+            className="flex items-center gap-1.5 text-sm bg-white text-[#1B8A7A] hover:bg-emerald-50 disabled:opacity-60 disabled:cursor-wait border border-[#1B8A7A] rounded-lg px-3 py-1.5 font-medium"
+          >
+            <Link2 size={13} /> {pdfLoading === 'links' ? 'Menyiapkan PDF Link…' : 'Download PDF Link'}
           </button>
           <button onClick={() => router.push('/akumulasi')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5">
             Akumulasi Lengkap <ExternalLink size={13} />

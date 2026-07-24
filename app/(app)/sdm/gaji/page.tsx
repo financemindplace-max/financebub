@@ -8,7 +8,7 @@ import { ref, onValue, off, set, get } from 'firebase/database'
 import { db } from '@/lib/firebase'
 import { fetchGlobal } from '@/lib/rtdb'
 import { fmt } from '@/lib/utils'
-import { Plus, Download, Trash2, X, ChevronDown, Pencil } from 'lucide-react'
+import { Plus, Download, Trash2, X, ChevronDown, Pencil, CheckCircle2, Circle } from 'lucide-react'
 
 const USER_ID = 'financebub-main'
 const KAR_PATH = `users/${USER_ID}/data/_karyawan`
@@ -393,8 +393,8 @@ async function downloadSlipPdf(s: SlipGaji) {
 
 // ── Slip Modal ────────────────────────────────────────────────────────────────
 
-function SlipModal({ initial, year, karyawan, onSave, onClose }: {
-  initial: SlipGaji | null; year: number; karyawan: Karyawan[]
+function SlipModal({ initial, year, karyawan, existingSlips, onSave, onClose }: {
+  initial: SlipGaji | null; year: number; karyawan: Karyawan[]; existingSlips: SlipGaji[]
   onSave: (s: SlipGaji) => void; onClose: () => void
 }) {
   const nowM  = new Date().getMonth()
@@ -418,6 +418,19 @@ function SlipModal({ initial, year, karyawan, onSave, onClose }: {
   const [penCustom,    setPenCustom]    = useState<CustomRow[]>(initial?.penCustom  || [])
   const [pngCustom,    setPngCustom]    = useState<CustomRow[]>(initial?.pngCustom  || [])
   const [saldoKasbon,  setSaldoKasbon]  = useState(0)
+
+  const createdEmployeeIds = new Set(
+    existingSlips
+      .filter(s => s.periode === periode && s.id !== initial?.id)
+      .map(s => s.karId)
+  )
+  const belumDibuat = aktif.filter(k => !createdEmployeeIds.has(k.id))
+  const sudahDibuat = aktif.filter(k => createdEmployeeIds.has(k.id))
+
+  useEffect(() => {
+    if (initial || !createdEmployeeIds.has(karId)) return
+    setKarId(belumDibuat[0]?.id || '')
+  }, [periode])
 
   useEffect(() => {
     if (!karId) return
@@ -450,18 +463,30 @@ function SlipModal({ initial, year, karyawan, onSave, onClose }: {
           {/* Header form */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Karyawan *</label>
-              <select value={karId} onChange={e => setKarId(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-[#1B8A7A]">
-                {aktif.map(k => <option key={k.id} value={k.id}>{k.nama} — {k.jabatan}</option>)}
-              </select>
-            </div>
-            <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Periode</label>
               <select value={periode} onChange={e => setPeriode(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-[#1B8A7A]">
                 {BULAN.map(b => <option key={b} value={`${b} ${year}`}>{b} {year}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Karyawan *</label>
+              <select value={karId} onChange={e => setKarId(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-[#1B8A7A]">
+                {belumDibuat.length === 0 && !initial && <option value="">Semua karyawan sudah dibuatkan slip</option>}
+                {belumDibuat.map(k => <option key={k.id} value={k.id}>○ {k.nama} — {k.jabatan} — Belum dibuat</option>)}
+                {sudahDibuat.length > 0 && <optgroup label="Sudah dibuat (tidak dapat dipilih lagi)">
+                  {sudahDibuat.map(k => <option key={k.id} value={k.id} disabled>✓ {k.nama} — {k.jabatan} — Sudah dibuat</option>)}
+                </optgroup>}
+              </select>
+            </div>
+            <div className="col-span-2 flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+              <div className="flex items-center gap-1.5 text-xs text-emerald-700">
+                <Circle size={13} /> <span><b>{belumDibuat.length}</b> belum dibuat</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                <CheckCircle2 size={14} className="text-emerald-600" /> <span><b>{sudahDibuat.length}</b> sudah dibuat</span>
+              </div>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Tanggal Gaji</label>
@@ -606,8 +631,10 @@ function SlipModal({ initial, year, karyawan, onSave, onClose }: {
           <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-sm rounded-lg hover:bg-gray-50">Batal</button>
           <button
             onClick={() => {
-              if (!karId)   { alert('Pilih karyawan'); return }
-              if (!periode) { alert('Pilih periode');  return }
+              if (!karId)   { alert('Pilih karyawan yang belum dibuatkan slip untuk periode ini'); return }
+              if (!periode) { alert('Pilih periode'); return }
+              const duplicate = existingSlips.some(s => s.karId === karId && s.periode === periode && s.id !== initial?.id)
+              if (duplicate) { alert('Slip gaji karyawan ini sudah dibuat untuk periode ' + periode); return }
               onSave({
                 id: initial?.id || ('sg-' + Date.now()),
                 periode, tglGaji, tglTTD, karId,
@@ -661,6 +688,11 @@ export default function GajiPage() {
   }, [year])
 
   const handleSave = async (s: SlipGaji) => {
+    const duplicate = slips.some(x => x.karId === s.karId && x.periode === s.periode && x.id !== s.id)
+    if (duplicate) {
+      alert(`Slip ${s.nama} untuk periode ${s.periode} sudah ada.`)
+      return
+    }
     const idx = slips.findIndex(x => x.id === s.id)
     const updated = idx >= 0 ? slips.map((x, i) => i === idx ? s : x) : [s, ...slips]
     setSlips(updated)
@@ -721,6 +753,7 @@ export default function GajiPage() {
           initial={editSlip}
           year={year}
           karyawan={karyawan}
+          existingSlips={slips}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditSlip(null) }}
         />
